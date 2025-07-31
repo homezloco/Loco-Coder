@@ -1,0 +1,846 @@
+// Import dependencies
+import axios from 'axios';
+import { getFromFallbackDB, saveToFallbackDB } from '../../utils/database-fallback.js';
+import modelFallbackManager from '../../utils/modelFallbackManager.js';
+import { API_ENDPOINTS, STORES } from './config/constants.js';
+
+// Default configuration for the AI service
+const DEFAULT_CONFIG = {
+  // Timeout configurations
+  timeout: 300000, // 5 minutes for complex queries
+  healthCheckTimeout: 5000, // 5 seconds for health checks
+  requestTimeout: 120000, // 2 minutes for regular requests
+  
+  // Retry configuration
+  maxRetries: 3,
+  retryDelay: 3000, // 3 seconds initial delay with exponential backoff
+  
+  // Health check endpoints
+  healthCheckEndpoints: [
+    '/api/health',
+    '/health',
+    '/api/status',
+    '/api/tags' // Ollama health check endpoint
+  ],
+  
+  // Ollama specific configuration
+  ollama: {
+    model: 'deepseek-coder:33b', // Default model
+    temperature: 0.7,
+    top_p: 0.9,
+    max_tokens: 2000,
+    num_ctx: 4096, // Context window size
+    num_thread: 4   // Number of threads to use
+  },
+  
+  // Fallback configuration
+  fallbackModels: [
+    'deepseek-coder:33b',
+    'codellama:instruct',
+    'codellama:7b-instruct-q4_0'
+  ]
+};
+
+// Track the health status of the AI service
+let isServiceHealthy = false;
+let lastHealthCheck = 0;
+const HEALTH_CHECK_CACHE_MS = 30000; // Cache health check for 30 seconds
+
+// Create a function to get axios instance with current config
+const getAxiosInstance = (baseURL = null, customTimeout = null) => {
+  const instance = axios.create({
+    baseURL: baseURL || API_ENDPOINTS[0],
+    timeout: customTimeout || DEFAULT_CONFIG.requestTimeout,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    // Enable keep-alive for better connection reuse
+    httpAgent: new (require('http').Agent)({ keepAlive: true }),
+    httpsAgent: new (require('https').Agent)({ keepAlive: true })
+  });
+
+  // Add request interceptor for logging
+  instance.interceptors.request.use(
+    config => {
+      console.log(`[AI Service] Sending request to ${config.url}`);
+      return config;
+    },
+    error => {
+      console.error('[AI Service] Request error:', error);
+      return Promise.reject(error);
+    }
+  );
+
+  // Add response interceptor for error handling
+  instance.interceptors.response.use(
+    response => {
+      console.log(`[AI Service] Received response from ${response.config.url}`);
+      return response;
+    },
+    async error => {
+      const originalRequest = error.config;
+      
+      // If error response is not defined, the server might be down
+      if (!error.response) {
+        console.error('[AI Service] No response from server, might be offline');
+        return Promise.reject(error);
+      }
+
+      // Retry logic for 5xx errors
+      if (error.response.status >= 500 && 
+          originalRequest && 
+          !originalRequest._retry && 
+          originalRequest.retryCount < DEFAULT_CONFIG.maxRetries) {
+        
+        originalRequest._retry = true;
+        originalRequest.retryCount = originalRequest.retryCount || 0;
+        originalRequest.retryCount++;
+        
+        const delay = Math.min(
+          DEFAULT_CONFIG.retryDelay * Math.pow(2, originalRequest.retryCount - 1),
+          30000 // Max 30s delay
+        );
+        
+        console.log(`[AI Service] Retry ${originalRequest.retryCount}/${DEFAULT_CONFIG.maxRetries} in ${delay}ms`);
+        
+        return new Promise(resolve => {
+          setTimeout(() => resolve(instance(originalRequest)), delay);
+        });
+      }
+      
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
+};
+
+/**
+ * AI and Chat services for interacting with language models
+ */
+
+const aiService = {
+  /**
+   * Chat with AI
+   * @param {string} prompt - User message
+   * @param {Object} options - Additional options
+   * @param {boolean} [options.health_check=false] - If true, just check service health
+   * @param {number} [options.timeout=30000] - Request timeout in ms
+   * @param {boolean} [options.skip_fallbacks=false] - Skip fallback models
+   * @param {Array} [options.preferred_models=[]] - Preferred models to try first
+   * @returns {Promise<Object>} Chat response with metadata
+   */
+  async chat(prompt, options = {}) {
+    // Set default options
+    const opts = {
+      health_check: false,
+      timeout: DEFAULT_CONFIG.timeout,
+      skip_fallbacks: false,
+      model: DEFAULT_CONFIG.ollama.model,
+      max_retries: DEFAULT_CONFIG.maxRetries,
+      temperature: DEFAULT_CONFIG.ollama.temperature,
+      top_p: DEFAULT_CONFIG.ollama.top_p,
+      max_tokens: DEFAULT_CONFIG.ollama.max_tokens,
+      num_ctx: DEFAULT_CONFIG.ollama.num_ctx,
+      num_thread: DEFAULT_CONFIG.ollama.num_thread,
+      stream: false,
+      retry_delay: DEFAULT_CONFIG.retryDelay,
+      preferred_models: []
+    };
+    
+    // Merge provided options with defaults
+    Object.assign(opts, options);
+    
+    // Process preferred models
+    opts.preferred_models = [...new Set([
+      ...(opts.preferred_models || []),
+      ...DEFAULT_CONFIG.fallbackModels
+    ])];
+    
+    // Destructure options with defaults applied
+    const {
+      health_check,
+      timeout,
+      skip_fallbacks,
+      model,
+      max_retries,
+      temperature,
+      top_p,
+      max_tokens: maxTokens,
+      num_ctx,
+      num_thread,
+      stream,
+      retry_delay,
+      preferred_models
+    } = opts;
+
+    let lastError = null;
+    let attempt = 0;
+
+    // Check cache first if not a health check
+    if (!health_check) {
+      const cached = await this._getCachedResponse(prompt);
+      if (cached) {
+        console.log('[AI Service] Returning cached response');
+        return { 
+          ...cached, 
+          fromCache: true,
+          model: model,
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
+
+    // Prepare Ollama API request data with enhanced options
+    const requestData = {
+      model: model,
+      prompt: prompt,
+      stream: stream,
+      options: {
+        temperature: Math.max(0.1, Math.min(temperature, 1.0)), // Clamp between 0.1 and 1.0
+        top_p: Math.max(0.1, Math.min(top_p, 1.0)), // Clamp between 0.1 and 1.0
+        num_predict: Math.min(maxTokens, 4096), // Cap at 4096 tokens
+        num_ctx: num_ctx,
+        num_thread: num_thread,
+        repeat_penalty: 1.1,
+        stop: ['\n###', '\n\n###', '\n\n\n']
+      }
+    };
+
+    try {
+      // Get the list of models to try (preferred models first, then fallbacks)
+      const modelsToTry = [
+        ...(preferred_models || []),
+        ...(skip_fallbacks ? [] : DEFAULT_CONFIG.fallbackModels.filter(m => !preferred_models.includes(m)))
+      ].filter(Boolean);
+      
+      console.log(`[AI Service] Models to try: ${modelsToTry.join(', ')}`);
+      
+      // Try each model in sequence
+      for (const currentModel of modelsToTry) {
+        // Update the model in the request data
+        const modelRequestData = {
+          ...requestData,
+          model: currentModel,
+          options: {
+            ...requestData.options,
+            // Adjust parameters based on model if needed
+            ...(currentModel.includes('codellama') ? { num_predict: Math.min(max_tokens, 2048) } : {})
+          }
+        };
+        
+        attempt = 0; // Reset attempt counter for each model
+        
+        // Execute with retry logic for the current model
+        let modelAttempt = 0;
+        while (modelAttempt <= max_retries) {
+          modelAttempt++;
+          const currentAttempt = attempt;
+          
+          try {
+            console.log(`[AI Service] Attempt ${currentAttempt}/${max_retries + 1} with model: ${currentModel}`);
+            
+            // Get axios instance with proper base URL and timeout for Ollama
+            const endpoint = API_ENDPOINTS[0];
+            const axiosInstance = getAxiosInstance(
+              endpoint,
+              health_check ? DEFAULT_CONFIG.healthCheckTimeout : timeout
+            );
+            
+            console.log(`[AI Service] Using endpoint: ${endpoint}, timeout: ${timeout}ms`);
+            
+            // For health check, use the /api/tags endpoint
+            if (health_check) {
+              const healthResponse = await axiosInstance.get('/api/tags', { 
+                timeout: DEFAULT_CONFIG.healthCheckTimeout 
+              });
+              isServiceHealthy = healthResponse.status === 200;
+              lastHealthCheck = Date.now();
+              return { 
+                status: 'ok',
+                models: healthResponse.data?.models || [],
+                timestamp: new Date().toISOString()
+              };
+            }
+            
+            // Send chat completion request with the current model
+            const startTime = Date.now();
+            const response = await axiosInstance.post('/api/generate', modelRequestData, {
+              timeout: timeout,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+            });
+            
+            const responseTime = Date.now() - startTime;
+            console.log(`[AI Service] Response received in ${responseTime}ms`);
+            
+            // Handle successful response
+            if (response.status === 200) {
+              const responseData = response.data;
+              
+              // Cache the successful response if not streaming
+              if (!stream) {
+                try {
+                  await this._cacheResponse(prompt, responseData);
+                } catch (cacheError) {
+                  console.warn('[AI Service] Failed to cache response:', cacheError.message);
+                }
+              }
+              
+              const result = {
+                ...responseData,
+              };
+              
+              return result;
+            }
+            
+            // If we get here, the response was not successful
+            lastError = new Error(`Failed to get response from model ${currentModel}`);
+          } catch (error) {
+            console.error('AI chat request failed:', error);
+            
+            // Handle model failure
+            if (error.config?.model) {
+              modelFallbackManager.recordFailure(error.config.model);
+            }
+            
+            lastError = error;
+          }
+        }
+      }
+      
+      // If we get here, all retries failed
+      throw lastError || new Error('All retry attempts failed');
+    } catch (error) {
+      console.error('AI chat request failed:', error);
+      
+      // Handle model failure
+      if (error.config?.model) {
+        modelFallbackManager.recordFailure(error.config.model);
+      }
+      
+      throw error;
+    }
+  },
+  
+  /**
+   * Execute code
+   * @param {string} code - Code to execute
+   * @param {string} [language='python'] - Programming language
+   * @returns {Promise<Object>} Execution result
+   */
+  async execute(code, language = 'python') {
+  try {
+    const axiosInstance = getAxiosInstance();
+    const response = await axiosInstance.post('/ai/execute', {
+      code,
+      language,
+    });
+
+    return {
+      success: true,
+      ...response.data,
+    };
+  } catch (error) {
+    console.error('Code execution failed:', error);
+    
+    // For Python, try a simple fallback execution
+    if (language === 'python') {
+      try {
+        // This is a very limited fallback that only works for simple Python code
+        // It's not secure for production use
+        const result = await this._executePythonFallback(code);
+        return {
+          success: true,
+          output: result,
+          language: 'python',
+          fromFallback: true,
+          warning: 'Using limited fallback execution',
+        };
+      } catch (fallbackError) {
+        console.error('Fallback execution failed:', fallbackError);
+      }
+    }
+  },
+
+  /**
+   * Execute code
+   * @param {string} code - Code to execute
+   * @param {string} language - Programming language
+   * @returns {Promise<Object>} Execution result
+   */
+  async execute(code, language = 'python') {
+    try {
+      const axiosInstance = getAxiosInstance();
+      const response = await axiosInstance.post('/ai/execute', {
+        code,
+        language,
+      });
+
+      return {
+        success: true,
+        ...response.data,
+      };
+    } catch (error) {
+      console.error('Code execution failed:', error);
+      
+      // For Python, try a simple fallback execution
+      if (language === 'python') {
+        try {
+          // This is a very limited fallback that only works for simple Python code
+          // It's not secure for production use
+          const result = await this._executePythonFallback(code);
+          return {
+            success: true,
+            output: result,
+            language: 'python',
+            fromFallback: true,
+            warning: 'Using limited fallback execution',
+          };
+        } catch (fallbackError) {
+          console.error('Fallback execution failed:', fallbackError);
+        }
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * Get available models
+   * @returns {Promise<Array>} List of available models
+   */
+  async getAvailableModels() {
+    try {
+      const axiosInstance = getAxiosInstance();
+      const response = await axiosInstance.get('/ai/models');
+      return response.data.models || [];
+    } catch (error) {
+      console.error('Failed to get available models:', error);
+      // Return default models if API fails
+      return [
+        { id: 'gpt-4', name: 'GPT-4', description: 'Most capable model' },
+        { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and capable' },
+        { id: 'claude-2', name: 'Claude 2', description: 'Anthropic\'s model' },
+      ];
+    }
+  },
+
+  /**
+   * Get model info
+   * @param {string} modelId - Model ID
+   * @returns {Promise<Object>} Model information
+   */
+  async getModelInfo(modelId) {
+    try {
+      const axiosInstance = getAxiosInstance();
+      const response = await axiosInstance.get(`/ai/models/${modelId}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to get info for model ${modelId}:`, error);
+      // Return default info if API fails
+      const defaultModels = {
+        'gpt-4': {
+          id: 'gpt-4',
+          name: 'GPT-4',
+          description: 'Most capable model, great for complex tasks',
+          max_tokens: 8192,
+        },
+        'gpt-3.5-turbo': {
+          id: 'gpt-3.5-turbo',
+          name: 'GPT-3.5 Turbo',
+          description: 'Fast and capable, good balance of speed and quality',
+          max_tokens: 4096,
+        },
+        'claude-2': {
+          id: 'claude-2',
+          name: 'Claude 2',
+          description: 'Anthropic\'s model, good for safety and helpfulness',
+          max_tokens: 100000,
+        },
+      };
+
+      return defaultModels[modelId] || null;
+    }
+  },
+
+  // --- Internal Methods ---
+
+  /**
+   * Get a cached response for a prompt
+   * @private
+   */
+  async _getCachedResponse(prompt) {
+    try {
+      // Simple hash function for the prompt
+      const promptHash = await this._hashString(prompt);
+      const cacheKey = `chat_${promptHash}`;
+      
+      // Try to get from cache
+      const cached = await getFromFallbackDB(STORES.AI_RESPONSES, cacheKey);
+      if (cached && cached.timestamp) {
+        // Check if cache is still valid (24 hours)
+        const cacheAge = Date.now() - new Date(cached.timestamp).getTime();
+        const maxCacheAge = 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (cacheAge < maxCacheAge) {
+          return cached.response;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error accessing response cache:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Simple string hashing function
+   * @private
+   */
+  async _hashString(str) {
+    // Simple hash function for demo purposes
+    // In production, consider using a more robust hashing algorithm
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString(36);
+  },
+
+  /**
+   * Fallback Python execution (very limited)
+   * @private
+   */
+  async _executePythonFallback(code) {
+    // This is a very limited fallback that only works for simple Python code
+    // It's not secure for production use
+    console.warn('Using limited Python fallback execution');
+    
+    // Create a simple Python environment in the browser using Pyodide
+    // Note: This requires Pyodide to be loaded in the page
+    if (typeof window.loadPyodide !== 'function') {
+      throw new Error('Python execution not available');
+    }
+
+    try {
+      // Initialize Pyodide if not already done
+      if (!window.pyodide) {
+        window.pyodide = await window.loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/',
+        });
+      }
+
+      // Execute the code
+      const result = await window.pyodide.runPythonAsync(code);
+      return String(result || '');
+    } catch (error) {
+      console.error('Python execution error:', error);
+      throw new Error(`Python error: ${error.message}`);
+    }
+  },
+};
+
+// Bind all methods to maintain proper 'this' context
+const bindMethods = (obj) => {
+  const bound = {};
+  Object.getOwnPropertyNames(Object.getPrototypeOf(obj)).forEach(key => {
+    if (typeof obj[key] === 'function' && key !== 'constructor') {
+      bound[key] = obj[key].bind(obj);
+    }
+  });
+  return bound;
+};
+
+// Create a properly bound instance with all methods
+const createAiService = () => {
+  console.log('Creating AI service instance...');
+  
+  // Create a new instance with all methods
+  const instance = {
+    // Add cache methods directly to the instance
+    _getCachedResponse: async function(prompt) {
+      try {
+        if (this.options?.skip_cache) {
+          debugLog('Skipping cache read due to skip_cache option');
+          return null;
+        }
+        
+        const cacheKey = `ai:${hashString(prompt)}`;
+        
+        // Check in-memory cache first (works in both browser and Node.js)
+        if (memoryCache.has(cacheKey)) {
+          debugLog('Cache hit (memory)');
+          return memoryCache.get(cacheKey);
+        }
+        
+        // Try browser Cache API if available
+        if (typeof caches !== 'undefined' && caches.default?.match) {
+          const cached = await caches.default.match(cacheKey);
+          if (cached) {
+            debugLog('Cache hit (browser)');
+            const data = await cached.json();
+            // Also store in memory for faster access
+            memoryCache.set(cacheKey, data);
+            return data;
+          }
+        }
+        
+        debugLog('Cache miss');
+        return null;
+      } catch (error) {
+        debugError('Cache read error:', error);
+        return null;
+      }
+    },
+    
+    _cacheResponse: async function(prompt, response) {
+      try {
+        if (this.options?.skip_cache) {
+          debugLog('Skipping cache write due to skip_cache option');
+          return;
+        }
+        
+        const cacheKey = `ai:${hashString(prompt)}`;
+        
+        // Store in memory cache
+        memoryCache.set(cacheKey, response);
+        
+        // Try browser Cache API if available
+        if (typeof caches !== 'undefined' && caches.default?.put) {
+          await caches.default.put(
+            cacheKey,
+            new Response(JSON.stringify(response), {
+              headers: { 'Content-Type': 'application/json' }
+            })
+          );
+        }
+        
+        debugLog('Response cached successfully');
+      } catch (error) {
+        debugError('Cache write error:', error);
+      }
+    },
+    
+    // Add other utility methods
+    _hashString: function(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return hash.toString(36);
+    }
+  };
+  
+  // Copy all methods from aiService to the instance
+  Object.getOwnPropertyNames(aiService).forEach(key => {
+    if (key !== 'constructor' && typeof aiService[key] === 'function') {
+      instance[key] = aiService[key].bind(instance);
+    }
+  });
+  
+  // Log the methods that were bound
+  const methodNames = Object.getOwnPropertyNames(instance)
+    .filter(key => typeof instance[key] === 'function');
+    
+  console.log('AI service instance created with methods:', methodNames);
+  
+  return instance;
+};
+
+// Create the service instance
+console.log('Initializing AI service instance...');
+const aiServiceInstance = createAiService();
+
+// Verify the instance was created properly
+if (!aiServiceInstance) {
+  console.error('Failed to create AI service instance');
+  throw new Error('Failed to create AI service instance');
+}
+
+// Add caching methods to the instance
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
+};
+
+// Debug logging utilities
+const debugLog = (...args) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[AI Service]', ...args);
+  }
+};
+
+const debugError = (...args) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('[AI Service]', ...args);
+  }
+};
+
+// Simple in-memory cache for Node.js environment
+const memoryCache = new Map();
+
+aiServiceInstance._getCachedResponse = async function(prompt) {
+  try {
+    if (this.options?.skip_cache) {
+      debugLog('Skipping cache read due to skip_cache option');
+      return null;
+    }
+    
+    const cacheKey = `ai:${hashString(prompt)}`;
+    
+    // Check in-memory cache first (works in both browser and Node.js)
+    if (memoryCache.has(cacheKey)) {
+      debugLog('Cache hit (memory)');
+      return memoryCache.get(cacheKey);
+    }
+    
+    // Try browser Cache API if available
+    if (typeof caches !== 'undefined') {
+      const cached = await caches.default?.match?.(cacheKey);
+      if (cached) {
+        debugLog('Cache hit (browser)');
+        const data = await cached.json();
+        // Also store in memory for faster access
+        memoryCache.set(cacheKey, data);
+        return data;
+      }
+    }
+    
+    debugLog('Cache miss');
+    return null;
+  } catch (error) {
+    debugError('Cache read error:', error);
+    return null;
+  }
+};
+
+aiServiceInstance._cacheResponse = async function(prompt, response) {
+  try {
+    if (this.options?.skip_cache) {
+      debugLog('Skipping cache write due to skip_cache option');
+      return;
+    }
+    
+    const cacheKey = `ai:${hashString(prompt)}`;
+    
+    // Store in memory cache
+    memoryCache.set(cacheKey, response);
+    
+    // Try browser Cache API if available
+    if (typeof caches !== 'undefined' && caches.default?.put) {
+      await caches.default.put(
+        cacheKey,
+        new Response(JSON.stringify(response), {
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+    }
+    
+    debugLog('Response cached successfully');
+  } catch (error) {
+    debugError('Cache write error:', error);
+  }
+};
+
+// Helper function to safely bind methods with fallbacks
+const safeBind = (instance, methodName, fallback) => {
+  if (typeof instance[methodName] === 'function') {
+    return instance[methodName].bind(instance);
+  }
+  if (fallback) {
+    return fallback;
+  }
+  return () => {
+    throw new Error(`Method ${methodName} not implemented`);
+  };
+};
+
+// Create a properly initialized service instance with all required methods
+const createExportedService = () => {
+  // Ensure we have a fresh instance
+  const instance = createAiService();
+  
+  // Define the methods we want to expose
+  const service = {
+    chat: instance.chat.bind(instance),
+    execute: instance.execute.bind(instance),
+    getAvailableModels: instance.getAvailableModels.bind(instance),
+    getModelInfo: instance.getModelInfo.bind(instance),
+    
+    // Add any additional methods or properties needed
+    isInitialized: true,
+    
+    // Add a method to check if the service is available
+    isAvailable: () => true
+  };
+  
+  // Add fallbacks for any missing methods
+  if (!service.chat) {
+    service.chat = async () => {
+      console.warn('chat method not implemented');
+      throw new Error('Chat method not implemented');
+    };
+  }
+  
+  if (!service.execute) {
+    service.execute = async () => {
+      console.warn('execute method not implemented');
+      throw new Error('Execute method not implemented');
+    };
+  }
+  
+  if (!service.getAvailableModels) {
+    service.getAvailableModels = async () => {
+      console.warn('getAvailableModels not implemented, using default');
+      return [
+        'codellama:instruct',
+        'gpt-4-turbo',
+        'gpt-3.5-turbo',
+        'claude-3-opus'
+      ];
+    };
+  }
+  
+  if (!service.getModelInfo) {
+    service.getModelInfo = (model) => ({
+      id: model,
+      name: model,
+      max_tokens: 4096,
+      supports_chat: true
+    });
+  }
+  
+  // Log the exported methods for debugging
+  console.log('Exporting AI service with methods:', Object.keys(service).filter(k => typeof service[k] === 'function'));
+  
+  return service;
+};
+
+// Create the service instance
+const exportedService = createExportedService();
+
+// Debug log the export object
+console.log('AI service export object:', Object.keys(exportedService));
+
+// Export the service instance with all methods properly bound
+export default {
+  chat: exportedService.chat,
+  execute: exportedService.execute,
+  getAvailableModels: exportedService.getAvailableModels,
+  getModelInfo: exportedService.getModelInfo,
+  isInitialized: true,
+  isAvailable: () => true
+};

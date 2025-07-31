@@ -1,0 +1,945 @@
+/**
+ * Project Dashboard Utility Functions with Persistence Monitoring
+ *
+ * Multi-tiered fallback system with performance monitoring:
+ * 1. API (primary source when online)
+ * 2. IndexedDB (persistent offline storage)
+ * 3. localStorage (simpler persistent storage)
+ * 4. sessionStorage (temporary session storage)
+ * 5. Demo projects (ultimate fallback)
+ */
+
+// Import services dynamically to reduce initial load time
+import * as persistenceMonitor from '../../utils/persistenceMonitor';
+
+// Demo projects as fallback data
+export const DEMO_PROJECTS = [
+  {
+    id: 'demo1',
+    name: 'React Weather App',
+    description: 'A weather application built with React and OpenWeatherMap API',
+    language: 'javascript',
+    type: 'frontend',
+    lastModified: new Date(Date.now() - 86400000).toISOString(),
+    favorite: true,
+    tags: ['react', 'api', 'weather']
+  },
+  {
+    id: 'demo2',
+    name: 'Express REST API',
+    description: 'RESTful API built with Express and MongoDB',
+    language: 'javascript',
+    type: 'backend',
+    lastModified: new Date(Date.now() - 172800000).toISOString(),
+    favorite: false,
+    tags: ['express', 'mongodb', 'rest']
+  },
+  {
+    id: 'demo3',
+    name: 'Django Blog',
+    description: 'Full-featured blog application with Django',
+    language: 'python',
+    type: 'fullstack',
+    lastModified: new Date(Date.now() - 259200000).toISOString(),
+    favorite: false,
+    tags: ['django', 'python', 'web']
+  },
+  {
+    id: 'demo4',
+    name: 'Flutter Mobile App',
+    description: 'Cross-platform mobile app with Flutter',
+    language: 'dart',
+    type: 'mobile',
+    lastModified: new Date(Date.now() - 345600000).toISOString(),
+    favorite: true,
+    tags: ['flutter', 'dart', 'mobile']
+  }
+];
+
+// Load IndexedDB service dynamically
+let indexedDBPromise = null;
+
+export const getIndexedDBService = async () => {
+  try {
+    if (!indexedDBPromise) {
+      indexedDBPromise = import('../../utils/indexedDBService')
+        .then(module => module.default)
+        .catch(err => {
+          console.error('Failed to load IndexedDB service:', err);
+          return null;
+        });
+    }
+    return await indexedDBPromise;
+  } catch (error) {
+    console.error('Error loading IndexedDB service:', error);
+    persistenceMonitor.recordStorageOperation('indexedDB', false);
+    return null;
+  }
+};
+
+// Cache for API health status to minimize redundant network requests
+let apiHealthCache = {
+  status: null,
+  timestamp: null,
+  offlineUntil: null, // Timestamp until which we assume API is offline
+  consecutiveFailures: 0, // Count consecutive failures for exponential backoff
+  lastError: null // Store last error for diagnostics
+};
+
+// Load cached API status from localStorage on module initialization
+try {
+  const cachedApiStatus = localStorage.getItem('apiHealthCache');
+  if (cachedApiStatus) {
+    const parsed = JSON.parse(cachedApiStatus);
+    // Only use cached values if they exist and are not too old (5 minutes)
+    if (parsed && parsed.timestamp && (Date.now() - parsed.timestamp) < 300000) {
+      apiHealthCache = {
+        ...parsed,
+        // Don't restore lastError from storage as it might contain circular references
+        lastError: null
+      };
+    }
+  }
+} catch (err) {
+  // Silently fail if localStorage access fails
+  console.warn('Failed to load API health cache from localStorage');
+}
+
+// Import the network utilities
+import { checkInternetConnectivity } from './networkUtils';
+
+// Constants for API health cache
+const API_HEALTH_CACHE_TIME = 30000; // 30 seconds
+
+/**
+ * Check API health with multiple fallback mechanisms
+ * @param {string} apiEndpoint - The base API URL to check
+ * @param {boolean} skipCache - Whether to skip cached results
+ * @param {boolean} quiet - Whether to suppress console logs
+ * @returns {Object} Status object with status and message
+ */
+const checkApiHealth = async function(apiEndpoint = 'http://localhost:5000/api', skipCache = false, quiet = false) {
+  const now = Date.now();
+  
+  // Use cached result if available and not explicitly skipped
+  if (!skipCache && apiHealthCache.timestamp && (now - apiHealthCache.timestamp) < API_HEALTH_CACHE_TIME) {
+    return apiHealthCache.result;
+  }
+  
+  // If we know the API is offline and the offline period hasn't expired, return cached result
+  if (apiHealthCache.offlineUntil && now < apiHealthCache.offlineUntil) {
+    console.log(`API health check using cached offline status (retry in ${Math.round((apiHealthCache.offlineUntil - now)/1000)}s)`);
+    return apiHealthCache.status || { status: 'offline', message: 'API is offline (cached status)' };
+  }
+  
+  try {
+    // First check if we have an internet connection at all
+    const networkCheck = await checkInternetConnectivity();
+    if (!networkCheck.isOnline) {
+      const result = {
+        status: 'offline',
+        message: 'No internet connection',
+        details: { error: 'Network unavailable', method: networkCheck.method }
+      };
+      
+      // Cache result
+      apiHealthCache.result = result;
+      apiHealthCache.timestamp = now;
+      apiHealthCache.consecutiveFailures += 1;
+      
+      return result;
+    }
+    
+    // If we have internet but API might not be accessible, check API health
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    try {
+      const response = await fetch(`${apiEndpoint}/health`, { 
+        method: 'GET',
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const result = {
+          status: 'online',
+          message: 'API connected',
+          details: data
+        };
+        
+        // Cache successful result
+        apiHealthCache.timestamp = Date.now();
+        apiHealthCache.result = result;
+        apiHealthCache.consecutiveFailures = 0; // Reset failure count
+        apiHealthCache.offlineUntil = null; // Clear offline state
+        
+        return result;
+      } else {
+        return {
+          status: 'degraded',
+          message: `API responded with status ${response.status}`,
+          details: { error: response.statusText }
+        };
+      }
+    } catch (error) {
+      console.error('API health check failed:', error);
+      
+      // Even if API is unavailable, we're still online if we have internet
+      if (error.name === 'AbortError') {
+        return {
+          status: 'degraded',
+          message: 'API request timed out but internet is available',
+          details: { error: 'timeout' }
+        };
+      }
+      
+      // For API-specific issues when internet is available, report as degraded instead of offline
+      return {
+        status: 'degraded',
+        message: 'Internet available but API unreachable',
+        details: { error: error.message }
+      };
+    }
+  } catch (error) {
+    console.error('Network connectivity check failed:', error);
+    const healthResult = {
+      status: 'offline',
+      message: 'Network connectivity check failed',
+      details: { error: error.message }
+    };
+
+    // Update cache
+    apiHealthCache = {
+      status: healthResult,
+      timestamp: now,
+      offlineUntil: null // Clear offline state
+    };
+    return healthResult;
+  }
+  
+  // If primary health check fails, try status endpoint
+  try {
+    const statusResponse = await fetchFn(`${apiEndpoint}/status`, { 
+      signal: AbortSignal.timeout(2000) 
+    });
+    
+    if (statusResponse.ok) {
+      const healthResult = { status: 'degraded', message: 'API status endpoint responding but health check failed' };
+      
+      // Update cache
+      apiHealthCache = {
+        status: healthResult,
+        timestamp: now,
+        offlineUntil: null // It's partially available, so clear offline state
+      };
+      return healthResult;
+    }
+  } catch (error) {
+    if (!quiet) console.warn('Status endpoint check failed:', error.message);
+  }
+    
+    // Try each fallback endpoint systematically
+    for (let i = 2; i < endpoints.length; i++) {
+      try {
+        const endpoint = endpoints[i];
+        if (!quiet) console.log(`Trying fallback endpoint: ${endpoint.name}`);
+        
+        const response = await fetchFn(endpoint.url, { 
+          signal: AbortSignal.timeout(1500) // Shorter timeout for faster fallback chain
+        });
+        
+        if (response.ok || response.status < 500) { // Any non-server error is a sign of life
+          const healthResult = { 
+            status: 'degraded', 
+            message: `API responding at fallback endpoint: ${endpoint.name}`,
+            endpoint: endpoint.name
+          };
+          
+          // Update cache
+          apiHealthCache = {
+            status: healthResult,
+            timestamp: now,
+            offlineUntil: null,
+            lastSuccessfulEndpoint: endpoint.name
+          };
+          
+          if (!quiet) console.log(`API health check succeeded with fallback: ${endpoint.name}`);
+          return healthResult;
+        }
+      } catch (error) {
+        if (!quiet) console.warn(`Fallback endpoint ${endpoints[i].name} check failed:`, error.message);
+        // Continue to next fallback
+      }
+    }
+    
+    // Record last failure time to implement exponential backoff
+    const lastFailTime = apiHealthCache.lastFailure || 0;
+    const timeSinceLastFail = now - lastFailTime;
+    
+    // All health checks failed, API is likely offline
+    const offlineResult = { status: 'offline', message: 'API is offline' };
+    
+    // Increment consecutive failures for exponential backoff
+    apiHealthCache.consecutiveFailures += 1;
+    
+    // Calculate backoff time using exponential strategy (min 5s, max 5min)
+    const baseOfflineTime = 5000; // 5 seconds base
+    const maxOfflineTime = 300000; // 5 minutes max
+    const backoffTime = Math.min(
+      baseOfflineTime * Math.pow(1.5, apiHealthCache.consecutiveFailures),
+      maxOfflineTime
+    );
+    
+    // Set cache with offline timeout to prevent redundant checks
+    apiHealthCache = {
+      ...apiHealthCache,
+      status: offlineResult,
+      timestamp: now,
+      offlineUntil: now + backoffTime
+    };
+    
+    // Store in localStorage for persistence across page refreshes
+    try {
+      localStorage.setItem('apiHealthCache', JSON.stringify({
+        status: offlineResult,
+        timestamp: now,
+        offlineUntil: now + backoffTime,
+        consecutiveFailures: apiHealthCache.consecutiveFailures
+      }));
+      
+      // Also store a separate simpler status for other components to use
+      localStorage.setItem('apiHealthStatus', JSON.stringify({
+        status: offlineResult,
+        timestamp: now
+      }));
+    } catch (err) {
+      // Silently fail if localStorage access fails
+    }
+    
+    if (!quiet) {
+      console.log(`API determined to be offline, caching status for ${Math.round(backoffTime/1000)}s (attempt ${apiHealthCache.consecutiveFailures})`);
+    }
+    
+    return offlineResult;
+  } catch (error) {
+    // Handle any uncaught errors in the main health check
+    if (!quiet) console.error('API health check failed with error:', error);
+    
+    // Increment consecutive failures for exponential backoff
+    apiHealthCache.consecutiveFailures += 1;
+    apiHealthCache.lastError = error.message;
+    
+    const criticalErrorResult = { 
+      status: 'error', 
+      message: `API check error: ${error.message}`,
+      recoverable: false
+    };
+    
+    // Cache the error status with backoff
+    const errorBackoffTime = Math.min(
+      5000 * Math.pow(1.5, apiHealthCache.consecutiveFailures),
+      60000 // Max 1 minute for errors
+    );
+    
+    apiHealthCache = {
+      ...apiHealthCache,
+      status: criticalErrorResult,
+      timestamp: now,
+      offlineUntil: now + errorBackoffTime
+    };
+    
+    return criticalErrorResult;
+  }
+};
+
+/**
+ * Fetch projects with comprehensive fallbacks
+ * @param {string} apiEndpoint - API endpoint to fetch from
+ * @param {boolean} quiet - Whether to suppress expected errors in console
+ * @returns {Object} Result containing projects, source, and any errors
+ */
+const fetchProjects = async (apiEndpoint, quiet = false) => {
+  let projects = [];
+  let errorMessage = null;
+  let source = null;
+  
+  // Check if we know the API is offline from our cache
+  const now = Date.now();
+  const isKnownOffline = apiHealthCache.offlineUntil && now < apiHealthCache.offlineUntil;
+  
+  // If we're in quiet mode and we know API is offline, skip API entirely
+  // This prevents unnecessary network requests that would log errors
+  if (quiet && isKnownOffline) {
+    if (!quiet) console.log('Skipping API fetch - known to be offline');
+    // Skip directly to IndexedDB fallback
+  } else {
+    // Define a silent fetch wrapper that avoids console errors
+    const silentFetch = async (url, options) => {
+      // Check if we're known offline and skip network requests
+      if (apiHealthCache.offlineUntil && now < apiHealthCache.offlineUntil) {
+        console.log(`API known to be offline until ${new Date(apiHealthCache.offlineUntil).toLocaleTimeString()}, using cached status`);
+        return {
+          ok: false,
+          status: 0,
+          statusText: 'API is offline (using cached status)',
+          json: async () => ({ status: 'offline', message: 'Using cached status' })
+        };
+      }
+      
+      // Set a short timeout to prevent hanging requests
+      const controller = new AbortController();
+      const signal = options?.signal || controller.signal;
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+      
+      try {
+        const response = await fetch(url, { ...options, signal });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        
+        // Implement exponential backoff for repeated failures
+        const backoffTime = apiHealthCache.consecutiveFailures ? 
+          Math.min(5000 * Math.pow(1.5, apiHealthCache.consecutiveFailures), 60000) : 
+          30000; // Start with 30s, max 1 minute
+          
+        // Mark API as offline with backoff
+        apiHealthCache.offlineUntil = now + backoffTime;
+        apiHealthCache.timestamp = now;
+        apiHealthCache.lastError = error.message || 'Connection refused';
+        apiHealthCache.consecutiveFailures = (apiHealthCache.consecutiveFailures || 0) + 1;
+        apiHealthCache.status = { 
+          status: 'offline', 
+          message: `Failed to connect - ${error.message}` 
+        };
+        
+        // Return a fake response that won't trigger further errors
+        return {
+          ok: false,
+          status: 0,
+          statusText: 'Failed to fetch - API unreachable',
+          json: async () => ({ status: 'offline', message: error.message })
+        };
+      }
+    
+    };
+    
+    // Use the appropriate fetch function based on quiet mode
+    const fetchFn = quiet ? silentFetch : fetch;
+    
+    try {
+      // Check API health first (pass quiet flag to reduce console noise)
+      // If we know API is offline, this will return cached status without making a network request
+      const apiHealth = await checkApiHealth(apiEndpoint, quiet);
+      const apiIsHealthy = apiHealth.status !== 'offline';
+      
+      // Try API first if it's available
+      if (apiIsHealthy) {
+        try {
+          const apiStartTime = performance.now();
+          const response = await fetchFn(`${apiEndpoint}/projects`, { 
+            signal: AbortSignal.timeout(5000) // 5-second timeout
+          });
+          const apiResponseTime = performance.now() - apiStartTime;
+          
+          if (response.ok) {
+            try {
+              const data = await response.json();
+              if (Array.isArray(data) && data.length > 0) {
+                projects = data;
+                source = 'API';
+                // Cache to localStorage for future use
+                localStorage.setItem('cachedProjects', JSON.stringify(projects));
+                localStorage.setItem('projectsCacheTime', Date.now());
+                
+                // Record successful API operation
+                persistenceMonitor.recordStorageOperation('api', true, apiResponseTime);
+                persistenceMonitor.recordDataSource('API');
+                
+                return { projects, source, error: null };
+              }
+            } catch (jsonError) {
+              if (!quiet) console.warn('Could not parse API response as JSON:', jsonError);
+            }
+          }
+          
+          // API request completed but didn't return valid data
+          persistenceMonitor.recordStorageOperation('api', false, apiResponseTime);
+        } catch (apiError) {
+          if (!quiet) console.warn('API fetch failed, using fallbacks:', apiError.message);
+          errorMessage = `API Error: ${apiError.message}`;
+          persistenceMonitor.recordStorageOperation('api', false);
+        }
+      }
+    
+      // Try IndexedDB fallback
+      persistenceMonitor.recordFallback('apiToIndexedDB');
+      
+      const indexedDBService = await getIndexedDBService();
+      if (indexedDBService) {
+        try {
+          const indexedDBStartTime = performance.now();
+          const indexedDBProjects = await indexedDBService.getAllProjects();
+          const indexedDBResponseTime = performance.now() - indexedDBStartTime;
+          
+          if (indexedDBProjects && indexedDBProjects.length > 0) {
+            console.log(`Loaded ${indexedDBProjects.length} projects from IndexedDB`);
+            
+            // Record successful IndexedDB operation
+            persistenceMonitor.recordStorageOperation('indexedDB', true, indexedDBResponseTime);
+            persistenceMonitor.recordDataSource('IndexedDB');
+            
+            return { 
+              projects: indexedDBProjects, 
+              source: 'IndexedDB', 
+              error: errorMessage 
+            };
+          }
+          persistenceMonitor.recordStorageOperation('indexedDB', false, indexedDBResponseTime);
+        } catch (indexedDBError) {
+          console.warn('IndexedDB fallback failed:', indexedDBError);
+          errorMessage = errorMessage || `IndexedDB Error: ${indexedDBError.message}`;
+          persistenceMonitor.recordStorageOperation('indexedDB', false);
+        }
+      }
+      
+      // Try localStorage fallback
+      persistenceMonitor.recordFallback('indexedDBToLocalStorage');
+      
+      try {
+        const localStorageStartTime = performance.now();
+        const cachedProjectsString = localStorage.getItem('cachedProjects');
+        if (cachedProjectsString) {
+          const cachedProjects = JSON.parse(cachedProjectsString);
+          if (Array.isArray(cachedProjects) && cachedProjects.length > 0) {
+            console.log(`Loaded ${cachedProjects.length} projects from localStorage`);
+            
+            // Record successful localStorage operation
+            persistenceMonitor.recordStorageOperation('localStorage', true);
+            persistenceMonitor.recordDataSource('localStorage');
+            
+            return { 
+              projects: cachedProjects, 
+              source: 'localStorage', 
+              error: errorMessage 
+            };
+          }
+        }
+        persistenceMonitor.recordStorageOperation('localStorage', false);
+      } catch (localStorageError) {
+        console.warn('localStorage fallback failed:', localStorageError);
+        errorMessage = errorMessage || `localStorage Error: ${localStorageError.message}`;
+        persistenceMonitor.recordStorageOperation('localStorage', false);
+      }
+      
+      // Try sessionStorage fallback
+      persistenceMonitor.recordFallback('localStorageToSessionStorage');
+      
+      try {
+        const sessionStorageStartTime = performance.now();
+        const sessionProjectsString = sessionStorage.getItem('cachedProjects');
+        if (sessionProjectsString) {
+          const sessionProjects = JSON.parse(sessionProjectsString);
+          if (Array.isArray(sessionProjects) && sessionProjects.length > 0) {
+            console.log(`Loaded ${sessionProjects.length} projects from sessionStorage`);
+            
+            // Record successful sessionStorage operation
+            persistenceMonitor.recordStorageOperation('sessionStorage', true);
+            persistenceMonitor.recordDataSource('sessionStorage');
+            
+            return { 
+              projects: sessionProjects, 
+              source: 'sessionStorage', 
+              error: errorMessage 
+            };
+          }
+        }
+        persistenceMonitor.recordStorageOperation('sessionStorage', false);
+      } catch (sessionStorageError) {
+        console.warn('sessionStorage fallback failed:', sessionStorageError);
+        errorMessage = errorMessage || `sessionStorage Error: ${sessionStorageError.message}`;
+        persistenceMonitor.recordStorageOperation('sessionStorage', false);
+      }
+      
+      // Final fallback - use demo data
+      persistenceMonitor.recordFallback('toDemo');
+      persistenceMonitor.recordDataSource('demoData');
+      
+      console.log('All persistence methods failed, using demo data');
+      return { 
+        projects: DEMO_PROJECTS, 
+        source: 'demoData', 
+        error: errorMessage || 'All persistence methods failed' 
+      };
+    } catch (criticalError) {
+      console.error('Critical error in project fetching:', criticalError);
+      return { 
+        projects: DEMO_PROJECTS, 
+        source: 'demoData (after error)', 
+        error: `Critical error: ${criticalError.message}` 
+      };
+    }
+  }
+};
+
+/**
+ * Filter projects based on active filter
+ * @param {Array} projects - Array of projects to filter
+ * @param {string} activeFilter - Filter to apply
+ * @returns {Array} - Filtered projects
+ */
+export const filterProjects = (projects, activeFilter) => {
+  if (!projects || !Array.isArray(projects)) return [];
+  
+  switch (activeFilter) {
+    case 'recent':
+      // Sort by last modified, newest first
+      return [...projects].sort(
+        (a, b) => new Date(b.lastModified) - new Date(a.lastModified)
+      ).slice(0, 10); // Only show 10 most recent
+      
+    case 'favorites':
+      return projects.filter(project => project.favorite);
+      
+    case 'frontend':
+      return projects.filter(project => project.type === 'frontend');
+      
+    case 'backend':
+      return projects.filter(project => project.type === 'backend');
+      
+    case 'fullstack':
+      return projects.filter(project => project.type === 'fullstack');
+      
+    case 'all':
+    default:
+      return projects;
+  }
+};
+
+/**
+ * Search projects by name, description, or tags
+ * @param {Array} projects - Array of projects to search
+ * @param {string} query - Search query
+ * @returns {Array} - Filtered projects matching the search query
+ */
+export const searchProjects = (projects, query) => {
+  if (!projects || !Array.isArray(projects) || !query) return projects;
+  
+  const normalizedQuery = query.toLowerCase().trim();
+  if (!normalizedQuery) return projects;
+  
+  return projects.filter(project => {
+    // Search in name and description
+    const nameMatch = project.name && project.name.toLowerCase().includes(normalizedQuery);
+    const descMatch = project.description && project.description.toLowerCase().includes(normalizedQuery);
+    
+    // Search in tags if they exist
+    let tagMatch = false;
+    if (project.tags && Array.isArray(project.tags)) {
+      tagMatch = project.tags.some(tag => 
+        tag.toLowerCase().includes(normalizedQuery)
+      );
+    }
+    
+    // Search in language if available
+    const langMatch = project.language && project.language.toLowerCase().includes(normalizedQuery);
+    
+    return nameMatch || descMatch || tagMatch || langMatch;
+  });
+};
+
+/**
+ * Persist projects to multiple storage mechanisms
+ * @param {Array} projects - Array of projects to persist
+ * @returns {Promise<boolean>} - True if persisted successfully to at least one storage mechanism
+ */
+export const persistProjects = async (projects) => {
+  if (!projects || !Array.isArray(projects)) return false;
+  
+  let persistedToAtLeastOne = false;
+  
+  // First try IndexedDB for most robust persistence
+  try {
+    const indexedDBService = await getIndexedDBService();
+    if (indexedDBService) {
+      await indexedDBService.clearProjects();
+      for (const project of projects) {
+        await indexedDBService.addProject(project);
+      }
+      persistenceMonitor.recordStorageOperation('indexedDB', true);
+      persistedToAtLeastOne = true;
+      console.log(`Persisted ${projects.length} projects to IndexedDB`);
+    }
+  } catch (indexedDBError) {
+    console.warn('Failed to persist to IndexedDB:', indexedDBError);
+    persistenceMonitor.recordStorageOperation('indexedDB', false);
+  }
+  
+  // Then try localStorage
+  try {
+    localStorage.setItem('cachedProjects', JSON.stringify(projects));
+    localStorage.setItem('projectsCacheTime', Date.now().toString());
+    persistenceMonitor.recordStorageOperation('localStorage', true);
+    persistedToAtLeastOne = true;
+    console.log(`Persisted ${projects.length} projects to localStorage`);
+  } catch (localStorageError) {
+    console.warn('Failed to persist to localStorage:', localStorageError);
+    persistenceMonitor.recordStorageOperation('localStorage', false);
+  }
+  
+  // Finally, try sessionStorage (temporary but still useful)
+  try {
+    sessionStorage.setItem('cachedProjects', JSON.stringify(projects));
+    sessionStorage.setItem('projectsCacheTime', Date.now().toString());
+    persistenceMonitor.recordStorageOperation('sessionStorage', true);
+    persistedToAtLeastOne = true;
+    console.log(`Persisted ${projects.length} projects to sessionStorage`);
+  } catch (sessionStorageError) {
+    console.warn('Failed to persist to sessionStorage:', sessionStorageError);
+    persistenceMonitor.recordStorageOperation('sessionStorage', false);
+  }
+  
+  return persistedToAtLeastOne;
+};
+
+/**
+ * Toggle favorite status for a project and persist changes
+ * @param {string} projectId - ID of the project to toggle
+ * @param {Array} projects - Current array of projects
+ * @returns {Promise<Object>} - Updated projects array and success status
+ */
+export const toggleProjectFavorite = async (projectId, projects) => {
+  if (!projectId || !projects || !Array.isArray(projects)) {
+    return { success: false, projects, error: 'Invalid parameters' };
+  }
+  
+  // Find and update project
+  const updatedProjects = projects.map(project => {
+    if (project.id === projectId) {
+      return { ...project, favorite: !project.favorite };
+    }
+    return project;
+  });
+  
+  // Persist changes with multi-tiered fallback system
+  try {
+    const result = await persistProjects(updatedProjects);
+    console.log(`Updated favorite status for project ${projectId}`, result);
+    return { success: true, projects: updatedProjects, source: result.source };
+  } catch (error) {
+    console.error('Error toggling favorite status:', error);
+    // Return updated projects anyway so UI can update
+    return { 
+      success: false, 
+      projects: updatedProjects, 
+      error: `Error: ${error.message}`,
+      source: 'memory-only'
+    };
+  }
+};
+
+/**
+ * Delete a project from storage
+ * @param {string} projectId - ID of the project to delete
+ * @param {Array} projects - Current array of projects
+ * @returns {Promise<Object>} - Updated projects array and success status
+ */
+export const deleteProject = async (projectId, projects) => {
+  if (!projectId || !projects || !Array.isArray(projects)) {
+    return { success: false, projects, error: 'Invalid parameters' };
+  }
+  
+  // Filter out the project to delete
+  const updatedProjects = projects.filter(project => project.id !== projectId);
+  
+  // Check if anything was removed
+  if (updatedProjects.length === projects.length) {
+    return { success: false, projects, error: 'Project not found' };
+  }
+  
+  // Persist changes to storage mechanisms
+  try {
+    const persisted = await persistProjects(updatedProjects);
+    if (persisted) {
+      console.log(`Deleted project ${projectId}`);
+      return { success: true, projects: updatedProjects };
+    } else {
+      return { 
+        success: false, 
+        projects: updatedProjects, 
+        error: 'Failed to persist changes after delete' 
+      };
+    }
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    return { 
+      success: false, 
+      projects: updatedProjects, 
+      error: `Error: ${error.message}` 
+    };
+  }
+};
+
+/**
+ * Get persistence monitoring statistics
+ * @returns {Object} - Statistics and diagnostic information
+ */
+export const getPersistenceStatistics = () => {
+  return persistenceMonitor.getStatistics();
+};
+
+/**
+ * Reset persistence monitoring statistics
+ */
+export const resetPersistenceStatistics = () => {
+  return persistenceMonitor.resetStatistics();
+};
+
+/**
+ * Save dashboard layout preferences with multi-tiered persistence
+ * @param {Object} preferences - Layout preferences to save (order, viewMode)
+ * @returns {Promise<boolean>} - True if persisted successfully to at least one storage mechanism
+ */
+async function saveDashboardPreferences(preferences) {
+  const startTime = performance.now();
+  let persistedSuccessfully = false;
+  const prefKey = 'dashboardLayoutPreferences';
+  
+  try {
+    // Try IndexedDB first
+    const indexedDBService = await getIndexedDBService();
+    if (indexedDBService) {
+      try {
+        await indexedDBService.setItem('userPreferences', prefKey, preferences);
+        persistenceMonitor.recordStorageOperation('indexedDB', true);
+        persistedSuccessfully = true;
+        console.log('Dashboard preferences saved to IndexedDB');
+      } catch (error) {
+        console.warn('Failed to save dashboard preferences to IndexedDB:', error);
+        persistenceMonitor.recordStorageOperation('indexedDB', false);
+      }
+    }
+    
+    // Try localStorage as fallback
+    if (!persistedSuccessfully) {
+      try {
+        localStorage.setItem(prefKey, JSON.stringify(preferences));
+        persistenceMonitor.recordStorageOperation('localStorage', true);
+        persistedSuccessfully = true;
+        console.log('Dashboard preferences saved to localStorage');
+      } catch (error) {
+        console.warn('Failed to save dashboard preferences to localStorage:', error);
+        persistenceMonitor.recordStorageOperation('localStorage', false);
+      }
+    }
+    
+    // Try sessionStorage as last resort
+    if (!persistedSuccessfully) {
+      try {
+        sessionStorage.setItem(prefKey, JSON.stringify(preferences));
+        persistenceMonitor.recordStorageOperation('sessionStorage', true);
+        persistedSuccessfully = true;
+        console.log('Dashboard preferences saved to sessionStorage');
+      } catch (error) {
+        console.warn('Failed to save dashboard preferences to sessionStorage:', error);
+        persistenceMonitor.recordStorageOperation('sessionStorage', false);
+      }
+    }
+    
+    const endTime = performance.now();
+    persistenceMonitor.recordOperationTime('saveDashboardPreferences', endTime - startTime);
+    return persistedSuccessfully;
+  } catch (error) {
+    console.error('Error saving dashboard preferences:', error);
+    persistenceMonitor.recordOperationTime('saveDashboardPreferences', performance.now() - startTime);
+    return false;
+  }
+}
+
+/**
+ * Load dashboard layout preferences with multi-tiered fallbacks
+ * @returns {Promise<Object>} - Dashboard preferences or null if not found
+ */
+async function loadDashboardPreferences() {
+  const startTime = performance.now();
+  const prefKey = 'dashboardLayoutPreferences';
+  let preferences = null;
+  let source = null;
+  
+  try {
+    // Try IndexedDB first
+    const indexedDBService = await getIndexedDBService();
+    if (indexedDBService) {
+      try {
+        preferences = await indexedDBService.getItem('userPreferences', prefKey);
+        if (preferences) {
+          persistenceMonitor.recordStorageOperation('indexedDB', true);
+          source = 'indexedDB';
+          console.log('Dashboard preferences loaded from IndexedDB');
+        }
+      } catch (error) {
+        console.warn('Failed to load dashboard preferences from IndexedDB:', error);
+        persistenceMonitor.recordStorageOperation('indexedDB', false);
+      }
+    }
+    
+    // Try localStorage if no preferences found yet
+    if (!preferences) {
+      try {
+        const stored = localStorage.getItem(prefKey);
+        if (stored) {
+          preferences = JSON.parse(stored);
+          persistenceMonitor.recordStorageOperation('localStorage', true);
+          source = 'localStorage';
+          console.log('Dashboard preferences loaded from localStorage');
+        }
+      } catch (error) {
+        console.warn('Failed to load dashboard preferences from localStorage:', error);
+        persistenceMonitor.recordStorageOperation('localStorage', false);
+      }
+    }
+    
+    // Try sessionStorage as last resort
+    if (!preferences) {
+      try {
+        const stored = sessionStorage.getItem(prefKey);
+        if (stored) {
+          preferences = JSON.parse(stored);
+          persistenceMonitor.recordStorageOperation('sessionStorage', true);
+          source = 'sessionStorage';
+          console.log('Dashboard preferences loaded from sessionStorage');
+        }
+      } catch (error) {
+        console.warn('Failed to load dashboard preferences from sessionStorage:', error);
+        persistenceMonitor.recordStorageOperation('sessionStorage', false);
+      }
+    }
+    
+    const endTime = performance.now();
+    persistenceMonitor.recordOperationTime('loadDashboardPreferences', endTime - startTime);
+    return { preferences, source };
+  } catch (error) {
+    console.error('Error loading dashboard preferences:', error);
+    persistenceMonitor.recordOperationTime('loadDashboardPreferences', performance.now() - startTime);
+    return { preferences: null, source: null };
+  }
+}
+
+export default {
+  fetchProjects,
+  persistProjects,
+  searchProjects,
+  toggleProjectFavorite,
+  deleteProject,
+  filterProjects,
+  checkApiHealth,
+  getPersistenceStatistics,
+  resetPersistenceStatistics,
+  saveDashboardPreferences,
+  loadDashboardPreferences,
+  DEMO_PROJECTS
+};

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigation Bar</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: transparent;
+      overflow: hidden;
+      height: 60px;
+    }
+    
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background-color: #1a1a1a;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      z-index: 2147483647;
+      border-bottom: 2px solid #4a8df6;
+    }
+    
+    .navbar-left {
+      display: flex;
+      align-items: center;
+    }
+    
+    .navbar-title {
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    .navbar-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .navbar-btn {
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: white;
+    }
+    
+    .btn-projects {
+      background-color: #4a8df6;
+    }
+    
+    .btn-new {
+      background-color: #34a853;
+    }
+    
+    .btn-menu {
+      background-color: #FF5722;
+    }
+    
+    .btn-help {
+      background-color: #9C27B0;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.7); }
+      70% { box-shadow: 0 0 0 8px rgba(52, 168, 83, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+    }
+    
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <!-- Left side -->
+    <div class="navbar-left">
+      <div class="navbar-title">Coder Platform</div>
+    </div>
+    
+    <!-- Right side with buttons -->
+    <div class="navbar-right">
+      <button id="projects-btn" class="navbar-btn btn-projects">
+        <span style="font-size:18px">📂</span> Projects
+      </button>
+      
+      <button id="newproject-btn" class="navbar-btn btn-new pulse">
+        <span style="font-size:18px">✨</span> New Project
+      </button>
+      
+      <button id="menu-btn" class="navbar-btn btn-menu">
+        <span style="font-size:18px">≡</span> Menu
+      </button>
+      
+      <button id="help-btn" class="navbar-btn btn-help">
+        <span style="font-size:18px">❓</span> Help
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Function to communicate with parent window
+    function sendMessage(action) {
+      window.parent.postMessage({ action: action }, '*');
+    }
+    
+    // Projects button
+    document.getElementById('projects-btn').addEventListener('click', function() {
+      try {
+        sendMessage('showProjects');
+        localStorage.setItem('showProjectDashboard', 'true');
+        window.parent.localStorage.setItem('showProjectDashboard', 'true');
+        console.log('Projects button clicked');
+      } catch(e) {
+        console.error('Error in projects button:', e);
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // New project button
+    document.getElementById('newproject-btn').addEventListener('click', function() {
+      try {
+        sendMessage('newProject');
+        console.log('New project button clicked');
+      } catch(e) {
+        console.error('Error in new project button:', e);
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // Menu button
+    document.getElementById('menu-btn').addEventListener('click', function() {
+      try {
+        sendMessage('toggleMenu');
+        console.log('Menu button clicked');
+      } catch(e) {
+        console.error('Error in menu button:', e);
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // Help button
+    document.getElementById('help-btn').addEventListener('click', function() {
+      window.open('/direct-menu.html', '_blank');
+    });
+  </script>
+</body>
+</html>

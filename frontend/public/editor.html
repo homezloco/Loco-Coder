@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency Editor - Local AI Coding Platform</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.css" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #FF5722;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .button-bar {
+            display: flex;
+            gap: 10px;
+        }
+        .button {
+            padding: 8px 15px;
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .button:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        .button.primary {
+            background-color: #4CAF50;
+            border: none;
+        }
+        .button.primary:hover {
+            background-color: #45a049;
+        }
+        .button.secondary {
+            background-color: #2196F3;
+            border: none;
+        }
+        .button.secondary:hover {
+            background-color: #0b7dda;
+        }
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 250px;
+            background-color: #fff;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .file-browser {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .file-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .file-item:hover {
+            background-color: #f5f5f5;
+        }
+        .file-item.active {
+            background-color: #e3f2fd;
+        }
+        .file-controls {
+            padding: 10px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 5px;
+        }
+        .sidebar-button {
+            flex: 1;
+            padding: 8px 5px;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #editor {
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        .output-container {
+            height: 200px;
+            overflow: auto;
+            background-color: #282c34;
+            color: #abb2bf;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 10px;
+            white-space: pre-wrap;
+        }
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: #21252b;
+            color: #abb2bf;
+            font-family: 'Courier New', Courier, monospace;
+            border-bottom: 1px solid #181a1f;
+        }
+        .output-title {
+            font-weight: bold;
+        }
+        .output-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .output-actions button {
+            background: none;
+            border: none;
+            color: #abb2bf;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .output-actions button:hover {
+            color: #fff;
+        }
+        .filename-display {
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+            color: #555;
+        }
+        .status-bar {
+            padding: 5px 10px;
+            background-color: #21252b;
+            color: #abb2bf;
+            font-size: 12px;
+            border-top: 1px solid #181a1f;
+            display: flex;
+            justify-content: space-between;
+        }
+        .line-number {
+            color: #636d83;
+            margin-right: 10px;
+            user-select: none;
+        }
+        /* Toggle button for sidebar */
+        .toggle-sidebar {
+            position: absolute;
+            left: 250px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #f0f2f5;
+            border: 1px solid #ddd;
+            border-left: none;
+            width: 16px;
+            height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0 4px 4px 0;
+            z-index: 10;
+        }
+        .sidebar-collapsed .sidebar {
+            display: none;
+        }
+        .sidebar-collapsed .toggle-sidebar {
+            left: 0;
+        }
+        /* Navigation menu on top - guaranteed visibility */
+        .ultra-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #1a1a1a;
+            z-index: 10000;
+            padding: 5px;
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+        }
+        .ultra-nav button {
+            padding: 4px 8px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .ultra-nav button:hover {
+            background-color: #444;
+        }
+        /* When ultra-nav is visible, offset the rest of the UI */
+        .ultra-nav-active {
+            padding-top: 34px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Ultra visible navigation menu that is impossible to hide -->
+    <div class="ultra-nav">
+        <button onclick="window.location.href='/'">Main App</button>
+        <button onclick="window.location.href='/direct-navigation.html'">Navigation</button>
+        <button onclick="window.location.href='/projects.html'">Projects</button>
+        <button onclick="window.location.href='/framed-app.html'">Framed App</button>
+        <button onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    </div>
+
+    <div class="header">
+        <h1>Emergency Editor - Local AI Coding Platform</h1>
+        <div class="button-bar">
+            <button class="button" onclick="newFile()">New</button>
+            <button class="button" onclick="openFile()">Open</button>
+            <button class="button" onclick="saveFile()">Save</button>
+            <button class="button primary" onclick="runCode()">Run Code</button>
+            <button class="button secondary" onclick="window.location.href='/direct-navigation.html'">Navigation</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <button class="toggle-sidebar" onclick="toggleSidebar()">≡</button>
+        
+        <div class="sidebar">
+            <div class="file-browser" id="file-browser">
+                <!-- Files will be populated here -->
+                <div class="file-item">Loading files...</div>
+            </div>
+            <div class="file-controls">
+                <button class="sidebar-button" onclick="newFile()">New</button>
+                <button class="sidebar-button" onclick="refreshFiles()">Refresh</button>
+            </div>
+        </div>
+
+        <div class="editor-container">
+            <div class="filename-display" id="filename-display">No file selected</div>
+            <div id="editor"></div>
+            
+            <div class="output-header">
+                <span class="output-title">Output</span>
+                <div class="output-actions">
+                    <button onclick="clearOutput()">Clear</button>
+                    <button onclick="toggleOutput()">Toggle</button>
+                </div>
+            </div>
+            
+            <div class="output-container" id="output">Welcome to the Emergency Editor</div>
+            
+            <div class="status-bar">
+                <div id="cursor-position">Line: 1, Column: 1</div>
+                <div id="editor-status">Ready</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/loader.js"></script>
+    <script>
+        // Apply body class for ultra-nav offset
+        document.body.classList.add('ultra-nav-active');
+        
+        // State management
+        let state = {
+            currentFile: null,
+            darkMode: localStorage.getItem('darkMode') === 'true',
+            files: [],
+            outputVisible: true,
+            sidebarVisible: true,
+            editor: null
+        };
+
+        // Initialize Monaco Editor
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            // Initialize the editor
+            state.editor = monaco.editor.create(document.getElementById('editor'), {
+                value: '# Write your Python code here\n\n',
+                language: 'python',
+                theme: state.darkMode ? 'vs-dark' : 'vs-light',
+                automaticLayout: true,
+                minimap: {
+                    enabled: true
+                },
+                lineNumbers: true,
+                scrollBeyondLastLine: false,
+                wordWrap: 'on'
+            });
+            
+            // Update cursor position display
+            state.editor.onDidChangeCursorPosition(function(e) {
+                document.getElementById('cursor-position').textContent = 
+                    `Line: ${e.position.lineNumber}, Column: ${e.position.column}`;
+            });
+            
+            // Set up keyboard shortcut for running code
+            state.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR, runCode);
+            
+            // Load files list on startup
+            refreshFiles();
+        });
+
+        // Toggle dark mode
+        function toggleDarkMode() {
+            state.darkMode = !state.darkMode;
+            localStorage.setItem('darkMode', state.darkMode);
+            
+            if (state.editor) {
+                monaco.editor.setTheme(state.darkMode ? 'vs-dark' : 'vs-light');
+            }
+            
+            document.body.classList.toggle('dark-mode', state.darkMode);
+        }
+
+        // Apply initial dark mode if enabled
+        if (state.darkMode) {
+            document.body.classList.add('dark-mode');
+        }
+        
+        // Toggle sidebar visibility
+        function toggleSidebar() {
+            state.sidebarVisible = !state.sidebarVisible;
+            document.body.classList.toggle('sidebar-collapsed', !state.sidebarVisible);
+        }
+        
+        // Toggle output panel visibility
+        function toggleOutput() {
+            state.outputVisible = !state.outputVisible;
+            const output = document.querySelector('.output-container');
+            const outputHeader = document.querySelector('.output-header');
+            
+            if (state.outputVisible) {
+                output.style.height = '200px';
+                outputHeader.style.borderBottom = '1px solid #181a1f';
+            } else {
+                output.style.height = '0';
+                outputHeader.style.borderBottom = 'none';
+            }
+        }
+        
+        // Clear output
+        function clearOutput() {
+            document.getElementById('output').textContent = '';
+        }
+        
+        // Create a new file
+        function newFile() {
+            const filename = prompt('Enter filename:');
+            if (!filename) return;
+            
+            state.currentFile = filename;
+            document.getElementById('filename-display').textContent = filename;
+            if (state.editor) {
+                state.editor.setValue('');
+            }
+            
+            // Auto-select language based on file extension
+            if (filename.endsWith('.py')) {
+                monaco.editor.setModelLanguage(state.editor.getModel(), 'python');
+            } else if (filename.endsWith('.js')) {
+                monaco.editor.setModelLanguage(state.editor.getModel(), 'javascript');
+            } else if (filename.endsWith('.html')) {
+                monaco.editor.setModelLanguage(state.editor.getModel(), 'html');
+            } else if (filename.endsWith('.css')) {
+                monaco.editor.setModelLanguage(state.editor.getModel(), 'css');
+            }
+        }
+        
+        // Open an existing file
+        function openFile() {
+            const filename = prompt('Enter filename to open:');
+            if (!filename) return;
+            
+            document.getElementById('editor-status').textContent = 'Loading...';
+            
+            fetch(`/api/files/${filename}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('File not found');
+                    return response.text();
+                })
+                .then(content => {
+                    state.currentFile = filename;
+                    document.getElementById('filename-display').textContent = filename;
+                    if (state.editor) {
+                        state.editor.setValue(content);
+                    }
+                    document.getElementById('editor-status').textContent = 'File loaded';
+                    
+                    // Auto-select language based on file extension
+                    if (filename.endsWith('.py')) {
+                        monaco.editor.setModelLanguage(state.editor.getModel(), 'python');
+                    } else if (filename.endsWith('.js')) {
+                        monaco.editor.setModelLanguage(state.editor.getModel(), 'javascript');
+                    } else if (filename.endsWith('.html')) {
+                        monaco.editor.setModelLanguage(state.editor.getModel(), 'html');
+                    } else if (filename.endsWith('.css')) {
+                        monaco.editor.setModelLanguage(state.editor.getModel(), 'css');
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                    document.getElementById('editor-status').textContent = 'Error loading file';
+                });
+        }
+        
+        // Save the current file
+        function saveFile() {
+            if (!state.currentFile) {
+                const filename = prompt('Enter filename:');
+                if (!filename) return;
+                state.currentFile = filename;
+                document.getElementById('filename-display').textContent = filename;
+            }
+            
+            document.getElementById('editor-status').textContent = 'Saving...';
+            
+            const content = state.editor ? state.editor.getValue() : '';
+            
+            fetch(`/api/files/${state.currentFile}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to save file');
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('editor-status').textContent = 'File saved';
+                    refreshFiles();
+                })
+                .catch(error => {
+                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                    document.getElementById('editor-status').textContent = 'Error saving file';
+                });
+        }
+        
+        // Run the current code
+        function runCode() {
+            const content = state.editor ? state.editor.getValue() : '';
+            document.getElementById('editor-status').textContent = 'Running...';
+            document.getElementById('output').textContent = 'Running code...';
+            
+            fetch('/api/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code: content })
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error('Execution failed');
+                    return response.text();
+                })
+                .then(output => {
+                    // Add line numbers to output
+                    const lines = output.split('\n');
+                    const numberedOutput = lines.map((line, i) => 
+                        `<span class="line-number">${i + 1}</span>${line}`).join('\n');
+                    
+                    document.getElementById('output').innerHTML = numberedOutput;
+                    document.getElementById('editor-status').textContent = 'Execution complete';
+                    
+                    // Make sure output is visible
+                    if (!state.outputVisible) {
+                        toggleOutput();
+                    }
+                    
+                    // Auto-scroll to bottom of output
+                    const outputContainer = document.querySelector('.output-container');
+                    outputContainer.scrollTop = outputContainer.scrollHeight;
+                })
+                .catch(error => {
+                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                    document.getElementById('editor-status').textContent = 'Execution failed';
+                });
+        }
+        
+        // Refresh the file list
+        function refreshFiles() {
+            document.getElementById('editor-status').textContent = 'Loading files...';
+            
+            fetch('/api/files')
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to load files');
+                    return response.json();
+                })
+                .then(files => {
+                    state.files = files;
+                    
+                    const fileBrowser = document.getElementById('file-browser');
+                    fileBrowser.innerHTML = '';
+                    
+                    if (files.length === 0) {
+                        fileBrowser.innerHTML = '<div class="file-item">No files found</div>';
+                        return;
+                    }
+                    
+                    files.forEach(file => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        if (state.currentFile === file) {
+                            fileItem.classList.add('active');
+                        }
+                        fileItem.textContent = file;
+                        fileItem.onclick = () => {
+                            state.currentFile = file;
+                            document.getElementById('filename-display').textContent = file;
+                            document.getElementById('editor-status').textContent = 'Loading...';
+                            
+                            fetch(`/api/files/${file}`)
+                                .then(response => response.text())
+                                .then(content => {
+                                    if (state.editor) {
+                                        state.editor.setValue(content);
+                                    }
+                                    document.getElementById('editor-status').textContent = 'File loaded';
+                                    
+                                    // Update active file in file browser
+                                    document.querySelectorAll('.file-item').forEach(item => {
+                                        item.classList.remove('active');
+                                    });
+                                    fileItem.classList.add('active');
+                                    
+                                    // Auto-select language based on file extension
+                                    if (file.endsWith('.py')) {
+                                        monaco.editor.setModelLanguage(state.editor.getModel(), 'python');
+                                    } else if (file.endsWith('.js')) {
+                                        monaco.editor.setModelLanguage(state.editor.getModel(), 'javascript');
+                                    } else if (file.endsWith('.html')) {
+                                        monaco.editor.setModelLanguage(state.editor.getModel(), 'html');
+                                    } else if (file.endsWith('.css')) {
+                                        monaco.editor.setModelLanguage(state.editor.getModel(), 'css');
+                                    }
+                                })
+                                .catch(error => {
+                                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                                    document.getElementById('editor-status').textContent = 'Error loading file';
+                                });
+                        };
+                        fileBrowser.appendChild(fileItem);
+                    });
+                    
+                    document.getElementById('editor-status').textContent = 'Files loaded';
+                })
+                .catch(error => {
+                    document.getElementById('file-browser').innerHTML = `<div class="file-item">Error: ${error.message}</div>`;
+                    document.getElementById('editor-status').textContent = 'Error loading files';
+                });
+        }
+
+        // Add global keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+S: Save
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveFile();
+            }
+            // Alt+P: Projects
+            else if (e.altKey && e.key === 'p') {
+                e.preventDefault();
+                window.location.href = '/projects.html';
+            }
+            // Alt+N: New Project
+            else if (e.altKey && e.key === 'n') {
+                e.preventDefault();
+                window.location.href = '/new-project.html';
+            }
+            // Alt+H: Direct Menu
+            else if (e.altKey && e.key === 'h') {
+                e.preventDefault();
+                window.location.href = '/direct-navigation.html';
+            }
+        });
+    </script>
+</body>
+</html>

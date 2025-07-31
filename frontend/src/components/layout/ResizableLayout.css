@@ -1,0 +1,165 @@
+/* ResizableLayout.css - Styling for the flexible layout system */
+
+.resizable-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.resizable-layout.horizontal .panel-group {
+  flex-direction: row;
+}
+
+.resizable-layout.vertical .panel-group {
+  flex-direction: column;
+}
+
+.panel-group {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+.resizable-panel {
+  position: relative;
+  overflow: auto !important; /* Ensure scrolling works */
+  min-height: 50px;
+  min-width: 50px;
+  display: flex;
+  flex-direction: column;
+}
+
+.resize-handle {
+  background-color: var(--resize-handle-bg, #e0e0e0);
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+/* Dark mode support */
+:root[data-theme="dark"] .resize-handle {
+  background-color: var(--resize-handle-bg-dark, #444);
+}
+
+.resize-handle:hover {
+  background-color: var(--resize-handle-hover-bg, #2196f3);
+}
+
+/* Horizontal resize handle */
+[data-panel-group-direction="horizontal"] > .resize-handle {
+  width: 4px;
+  margin: 0 -2px;
+  cursor: col-resize;
+}
+
+/* Vertical resize handle */
+[data-panel-group-direction="vertical"] > .resize-handle {
+  height: 4px;
+  margin: -2px 0;
+  cursor: row-resize;
+}
+
+/* Handle decorations for better visibility */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  background-color: rgba(127, 127, 127, 0.5);
+}
+
+[data-panel-group-direction="horizontal"] > .resize-handle::after {
+  left: 50%;
+  top: calc(50% - 15px);
+  transform: translateX(-50%);
+  width: 2px;
+  height: 30px;
+  border-radius: 1px;
+}
+
+[data-panel-group-direction="vertical"] > .resize-handle::after {
+  top: 50%;
+  left: calc(50% - 15px);
+  transform: translateY(-50%);
+  height: 2px;
+  width: 30px;
+  border-radius: 1px;
+}
+
+/* Layout controls */
+.layout-controls {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  background-color: var(--controls-bg, #f5f5f5);
+  border-bottom: 1px solid var(--controls-border, #e0e0e0);
+  z-index: 100;
+}
+
+:root[data-theme="dark"] .layout-controls {
+  background-color: var(--controls-bg-dark, #333);
+  border-color: var(--controls-border-dark, #555);
+}
+
+.layout-preset-button,
+.layout-reset-button {
+  padding: 4px 8px;
+  background: var(--button-bg, #ffffff);
+  border: 1px solid var(--button-border, #cccccc);
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+:root[data-theme="dark"] .layout-preset-button,
+:root[data-theme="dark"] .layout-reset-button {
+  background: var(--button-bg-dark, #444);
+  border-color: var(--button-border-dark, #666);
+  color: var(--text-color-dark, #fff);
+}
+
+.layout-preset-button:hover,
+.layout-reset-button:hover {
+  background: var(--button-hover-bg, #f0f0f0);
+  border-color: var(--button-hover-border, #999);
+}
+
+:root[data-theme="dark"] .layout-preset-button:hover,
+:root[data-theme="dark"] .layout-reset-button:hover {
+  background: var(--button-hover-bg-dark, #555);
+  border-color: var(--button-hover-border-dark, #999);
+}
+
+/* Ensure scrollable content */
+.scrollable-content {
+  overflow: auto;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
+
+/* Collapsed panel indicator */
+.collapsed-indicator {
+  position: absolute;
+  z-index: 10;
+  padding: 4px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 3px;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.resizable-panel[data-collapsed="true"] + .collapsed-indicator {
+  opacity: 1;
+}
+
+/* Make console output always visible */
+.output-panel {
+  min-height: 120px !important; /* Ensure console has minimum height */
+  min-width: 150px !important;
+}

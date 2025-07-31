@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Navigation - Local AI Coding Platform</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #FF5722;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .nav-section {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .nav-section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .button {
+            display: block;
+            padding: 15px;
+            background-color: #2196F3;
+            color: white;
+            text-align: center;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .button:hover {
+            background-color: #0b7dda;
+        }
+        .button.primary {
+            background-color: #FF5722;
+        }
+        .button.primary:hover {
+            background-color: #e64a19;
+        }
+        .button.secondary {
+            background-color: #4CAF50;
+        }
+        .button.secondary:hover {
+            background-color: #45a049;
+        }
+        .status-section {
+            background-color: #f8f9fa;
+            border-left: 4px solid #FF5722;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .shortcuts {
+            background-color: #e3f2fd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .shortcuts h3 {
+            margin-top: 0;
+            color: #1565c0;
+        }
+        .shortcut-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .shortcut-list li {
+            padding: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .shortcut-key {
+            background-color: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Local AI Coding Platform - Direct Navigation</h1>
+            <p>Emergency Navigation Panel</p>
+        </div>
+
+        <div class="status-section">
+            <p><strong>Status:</strong> This is a standalone navigation page that works even if the React application fails.</p>
+        </div>
+
+        <div class="nav-section">
+            <h2>Application Navigation</h2>
+            <div class="button-group">
+                <a href="/" class="button primary">Main Application</a>
+                <a href="/direct-menu.html" class="button">Direct Menu</a>
+                <a href="/projects.html" class="button secondary">Projects</a>
+                <a href="/new-project.html" class="button secondary">New Project</a>
+                <a href="/framed-app.html" class="button">Framed App</a>
+                <a href="/editor.html" class="button">Direct Editor</a>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <h2>Tool Access</h2>
+            <div class="button-group">
+                <a href="/terminal.html" class="button">Terminal</a>
+                <a href="/file-browser.html" class="button">File Browser</a>
+                <a href="/settings.html" class="button">Settings</a>
+                <a href="/help.html" class="button">Help & Documentation</a>
+            </div>
+        </div>
+
+        <div class="shortcuts">
+            <h3>Keyboard Shortcuts</h3>
+            <ul class="shortcut-list">
+                <li><span>Show Projects Dashboard</span> <span class="shortcut-key">Alt+P</span></li>
+                <li><span>Create New Project</span> <span class="shortcut-key">Alt+N</span></li>
+                <li><span>Open Direct Menu</span> <span class="shortcut-key">Alt+H</span></li>
+                <li><span>Open Framed App</span> <span class="shortcut-key">Alt+F</span></li>
+            </ul>
+        </div>
+        
+        <div class="nav-section">
+            <h2>Troubleshooting</h2>
+            <p>If the main application is not loading:</p>
+            <ol>
+                <li>Check if the development server is running (should be on port 3000)</li>
+                <li>Try accessing the app via the specific IP addresses shown in the terminal</li>
+                <li>Check for JavaScript errors in the browser console</li>
+                <li>Verify that all JSX syntax in App.jsx is correct</li>
+                <li>Ensure the backend API server is running (typically port 8000)</li>
+            </ol>
+            
+            <p><strong>Server Status Check:</strong></p>
+            <ul>
+                <li>Frontend: <span id="frontend-status">Checking...</span></li>
+                <li>Backend: <span id="backend-status">Checking...</span></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Check server status
+        async function checkServerStatus() {
+            // Check frontend
+            try {
+                const frontendResponse = await fetch('http://localhost:3000/index.html', { mode: 'no-cors' });
+                document.getElementById('frontend-status').textContent = 'Running';
+                document.getElementById('frontend-status').style.color = 'green';
+            } catch (error) {
+                document.getElementById('frontend-status').textContent = 'Not accessible';
+                document.getElementById('frontend-status').style.color = 'red';
+            }
+            
+            // Check backend
+            try {
+                const backendResponse = await fetch('http://localhost:8000/health', { mode: 'no-cors' });
+                document.getElementById('backend-status').textContent = 'Running';
+                document.getElementById('backend-status').style.color = 'green';
+            } catch (error) {
+                document.getElementById('backend-status').textContent = 'Not accessible';
+                document.getElementById('backend-status').style.color = 'red';
+            }
+        }
+
+        // Add event listeners when the page loads
+        window.addEventListener('load', function() {
+            checkServerStatus();
+        });
+    </script>
+</body>
+</html>

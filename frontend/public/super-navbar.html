@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Navbar</title>
+  <style>
+    /* Reset styles */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", sans-serif;
+    }
+
+    /* Full page link to ensure clickability */
+    .page-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      box-sizing: border-box;
+      background-color: #f5f5f5;
+    }
+
+    .mega-button-container {
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .mega-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 25px;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    .mega-button:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .mega-button:active {
+      transform: translateY(2px);
+    }
+
+    .mega-button .icon {
+      font-size: 36px;
+      margin-right: 15px;
+    }
+
+    .btn-projects {
+      background-color: #4a8df6;
+      background-image: linear-gradient(135deg, #4a8df6, #3b78e7);
+    }
+
+    .btn-new {
+      background-color: #34a853;
+      background-image: linear-gradient(135deg, #34a853, #2d9549);
+    }
+
+    .btn-menu {
+      background-color: #FF5722;
+      background-image: linear-gradient(135deg, #FF5722, #e64a19);
+    }
+
+    .btn-return {
+      background-color: #757575;
+      background-image: linear-gradient(135deg, #757575, #616161);
+      font-size: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .header p {
+      font-size: 18px;
+      color: #666;
+      margin-top: 0;
+    }
+
+    /* Pulse animation */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(52, 168, 83, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    .instructions {
+      background-color: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 40px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 800px;
+    }
+
+    .instructions h2 {
+      margin-top: 0;
+      color: #333;
+    }
+
+    .instructions pre {
+      background-color: #f0f0f0;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+
+    .instructions code {
+      font-family: 'Courier New', monospace;
+    }
+
+    .emergency-actions {
+      margin-top: 40px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    <div class="header">
+      <h1>Coder Platform Navigation</h1>
+      <p>This is your guaranteed access point to essential features</p>
+    </div>
+
+    <div class="mega-button-container">
+      <a href="javascript:void(0);" id="projects-link" class="mega-button btn-projects">
+        <span class="icon">📂</span> Open Projects Dashboard
+      </a>
+
+      <a href="javascript:void(0);" id="newproject-link" class="mega-button btn-new pulse">
+        <span class="icon">✨</span> Create New Project
+      </a>
+
+      <a href="javascript:void(0);" id="menu-link" class="mega-button btn-menu">
+        <span class="icon">≡</span> Open Main Menu
+      </a>
+
+      <a href="/" id="return-link" class="mega-button btn-return">
+        <span class="icon">🏠</span> Return to Main Application
+      </a>
+    </div>
+
+    <div class="instructions">
+      <h2>Manual Fallback Commands</h2>
+      <p>If buttons don't work, copy and paste these commands into your browser console (F12 > Console):</p>
+
+      <pre><code>// Open Projects Dashboard
+localStorage.setItem('showProjectDashboard', 'true');
+document.querySelector('.project-dashboard')?.style.display = 'flex';
+document.querySelector('.project-dashboard')?.style.setProperty('visibility', 'visible', 'important');
+
+// Open Main Menu
+document.querySelector('.main-menu-container')?.style.display = 'block';
+document.querySelector('.hamburger-button')?.click();
+
+// Find and click New Project button
+[...document.querySelectorAll('button')]
+  .find(b => b.textContent.includes('New Project'))?.click();</code></pre>
+    </div>
+
+    <div class="emergency-actions">
+      <p>Need immediate help? <a href="/direct-menu.html" target="_blank">Open Emergency Direct Menu</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Projects button
+    document.getElementById('projects-link').addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // Store in localStorage
+      localStorage.setItem('showProjectDashboard', 'true');
+      
+      // Create a popup with instructions
+      var popup = document.createElement('div');
+      popup.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,0.3);z-index:99999;max-width:400px;text-align:center;';
+      
+      popup.innerHTML = `
+        <h3 style="margin-top:0">Project Dashboard Activated</h3>
+        <p>Return to the main application tab/window. The project dashboard should now be visible.</p>
+        <p>If not visible, press F12 and run this command in console:</p>
+        <pre style="background:#f0f0f0;padding:10px;text-align:left;overflow:auto">document.querySelector('.project-dashboard')?.style.display = 'flex';</pre>
+        <button style="padding:10px 20px;background:#4a8df6;color:white;border:none;border-radius:4px;cursor:pointer;margin-top:15px;" onclick="this.parentNode.remove();">Close</button>
+      `;
+      
+      document.body.appendChild(popup);
+      
+      // Return to main page after delay
+      setTimeout(function() {
+        window.location.href = '/';
+      }, 5000);
+    });
+    
+    // New project button
+    document.getElementById('newproject-link').addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // Create a popup with instructions
+      var popup = document.createElement('div');
+      popup.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,0.3);z-index:99999;max-width:400px;text-align:center;';
+      
+      popup.innerHTML = `
+        <h3 style="margin-top:0">New Project Action Triggered</h3>
+        <p>Return to the main application tab/window. The new project dialog should appear.</p>
+        <p>If not visible, press F12 and run this command in console:</p>
+        <pre style="background:#f0f0f0;padding:10px;text-align:left;overflow:auto">[...document.querySelectorAll('button')]
+  .find(b => b.textContent.includes('New Project'))?.click();</pre>
+        <button style="padding:10px 20px;background:#34a853;color:white;border:none;border-radius:4px;cursor:pointer;margin-top:15px;" onclick="this.parentNode.remove();">Close</button>
+      `;
+      
+      document.body.appendChild(popup);
+      
+      // Return to main page after delay
+      setTimeout(function() {
+        window.location.href = '/';
+      }, 5000);
+    });
+    
+    // Menu button
+    document.getElementById('menu-link').addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // Create a popup with instructions
+      var popup = document.createElement('div');
+      popup.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,0.3);z-index:99999;max-width:400px;text-align:center;';
+      
+      popup.innerHTML = `
+        <h3 style="margin-top:0">Main Menu Triggered</h3>
+        <p>Return to the main application tab/window. The main menu should now be visible.</p>
+        <p>If not visible, press F12 and run this command in console:</p>
+        <pre style="background:#f0f0f0;padding:10px;text-align:left;overflow:auto">document.querySelector('.main-menu-container')?.style.display = 'block';
+document.querySelector('.hamburger-button')?.click();</pre>
+        <button style="padding:10px 20px;background:#FF5722;color:white;border:none;border-radius:4px;cursor:pointer;margin-top:15px;" onclick="this.parentNode.remove();">Close</button>
+      `;
+      
+      document.body.appendChild(popup);
+      
+      // Return to main page after delay
+      setTimeout(function() {
+        window.location.href = '/';
+      }, 5000);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,701 @@
+// /project-root/frontend/src/api.js
+import axios from 'axios';
+import { initFallbackDatabase, saveToFallbackDB, getFromFallbackDB, queryFallbackDB, syncFallbackData, STORES } from './utils/database-fallback';
+import { 
+  LANGUAGE_CAPABILITIES, 
+  getExtensionForLanguage,
+  canExecuteClientSide,
+  detectLanguageFromContent
+} from './utils/language-utils';
+
+// Base API URL with multiple fallback options (ordered by preference)
+const API_ENDPOINTS = [
+  '/api',                     // Primary: Use Vite proxy (avoids CORS issues)
+  'http://localhost:8000',    // Fallback 1: Direct connection to local backend
+  'http://127.0.0.1:8000',    // Fallback 2: Alternative local IP
+  window.location.origin      // Fallback 3: Same-origin if deployed together
+];
+
+// Function to determine the best available API endpoint with health checking
+const determineBestEndpoint = async () => {
+  // Try to use cached working endpoint first
+  const cachedEndpoint = localStorage.getItem('working_api_endpoint');
+  if (cachedEndpoint) {
+    try {
+      // Test the cached endpoint with a simple request
+      await fetch(`${cachedEndpoint}/health`, { method: 'GET', mode: 'no-cors', timeout: 2000 });
+      console.log(`Using cached API endpoint: ${cachedEndpoint}`);
+      return cachedEndpoint;
+    } catch (e) {
+      console.log(`Cached endpoint failed: ${cachedEndpoint}`);
+      // Continue to try other endpoints
+    }
+  }
+
+  // Try each endpoint until one works
+  for (const endpoint of API_ENDPOINTS) {
+    try {
+      await fetch(`${endpoint}/health`, { method: 'GET', mode: 'no-cors', timeout: 2000 });
+      console.log(`Found working API endpoint: ${endpoint}`);
+      localStorage.setItem('working_api_endpoint', endpoint);
+      return endpoint;
+    } catch (e) {
+      console.log(`Endpoint failed: ${endpoint}`);
+      // Continue to next endpoint
+    }
+  }
+
+  // If all fail, return the first one and hope for the best
+  console.warn('All API endpoints failed, using default');
+  return API_ENDPOINTS[0];
+};
+
+// Initialize with the first endpoint, will be updated asynchronously
+let API_BASE_URL = API_ENDPOINTS[0];
+
+// Determine the best endpoint asynchronously
+determineBestEndpoint().then(endpoint => {
+  API_BASE_URL = endpoint;
+  console.log(`API base URL set to: ${API_BASE_URL}`);
+});
+
+
+// Auth token storage
+const TOKEN_STORAGE_KEY = 'local_ai_platform_auth_token';
+const USERNAME_STORAGE_KEY = 'local_ai_platform_username';
+
+// Create axios instance with configuration
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000, // 30 second timeout
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+});
+
+// Add auth token to requests if available
+apiClient.interceptors.request.use(config => {
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Error handler middleware
+apiClient.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('API Error:', error);
+    // Check if error is due to network/server unavailability
+    if (!error.response) {
+      return Promise.reject({
+        message: 'Network error: Unable to connect to the API. Please check if the backend server is running.',
+        originalError: error
+      });
+    }
+    
+    // Handle authentication errors
+    if (error.response && error.response.status === 401) {
+      // Clear stored auth data on unauthorized
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(USERNAME_STORAGE_KEY);
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+// Helper method to get current base URL
+function getBaseUrl() {
+  return API_BASE_URL;
+}
+
+// Health check function
+export async function checkHealth() {
+  try {
+    const response = await apiClient.get('/health');
+    return response.data;
+  } catch (error) {
+    console.error('Health check failed:', error);
+    return { status: 'error', message: 'API server unreachable' };
+  }
+}
+
+// Chat with AI
+export async function chat(prompt) {
+  try {
+    const response = await apiClient.post('/chat', { prompt });
+    return response.data.response;
+  } catch (error) {
+    console.error('Chat API error:', error);
+    return "Sorry, I couldn't connect to the AI service. Please check if the backend server is running and Ollama is properly configured.";
+  }
+}
+
+// Execute code with multiple fallback methods and robust error handling
+export async function execute(code, language = 'python') {
+  // Create appropriate filename based on language configuration
+  const extension = getExtensionForLanguage(language);
+  const filename = `code${extension}`;
+  
+  // Backend execution attempts counter
+  let attemptCount = 0;
+  const maxAttempts = 3;
+  
+  // Track execution method for debugging
+  let executionMethod = 'backend-primary';
+  
+  // Detect if content suggests a different language than specified
+  const detectedLanguage = detectLanguageFromContent(code);
+  if (detectedLanguage && detectedLanguage !== language) {
+    console.log(`Language mismatch: specified ${language}, but content appears to be ${detectedLanguage}`);
+  }
+  
+  // First try the primary backend execution with retry logic
+  async function tryBackendExecution() {
+    for (let i = 0; i < maxAttempts; i++) {
+      attemptCount++;
+      try {
+        // Try different endpoints in rotation if retrying
+        const endpoint = API_ENDPOINTS[i % API_ENDPOINTS.length];
+        const url = `${endpoint}/execute`;
+        
+        console.log(`Attempt ${attemptCount}: Trying ${url}`);
+        
+        // Use axios for first attempt, fetch as alternative method
+        let response;
+        if (i === 0) {
+          response = await apiClient.post('/execute', {
+            filename,
+            language, // Explicitly pass language to backend
+            content: code,
+            timeout: 10 // 10 second timeout
+          });
+          executionMethod = 'backend-axios';
+          return response.data;
+        } else {
+          const fetchResponse = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              filename, 
+              language,
+              content: code,
+              timeout: 10 
+            })
+          });
+          
+          if (!fetchResponse.ok) {
+            throw new Error(`HTTP error ${fetchResponse.status}`);
+          }
+          
+          executionMethod = `backend-fetch-${i}`;
+          return await fetchResponse.json();
+        }
+      } catch (error) {
+        console.warn(`Backend execution attempt ${attemptCount} failed:`, error);
+        
+        // On last attempt, don't wait - continue to next fallback
+        if (i < maxAttempts - 1) {
+          // Exponential backoff delay between retries
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 300));
+        }
+      }
+    }
+    
+    // All backend attempts failed
+    throw new Error('All backend execution attempts failed');
+  }
+  
+  // Try backend execution first
+  try {
+    return await tryBackendExecution();
+  } catch (backendError) {
+    console.warn('All backend execution methods failed, trying fallbacks:', backendError);
+    
+    // Check if language supports client-side execution
+    const canExecuteInClient = canExecuteClientSide(language);
+    if (!canExecuteInClient) {
+      return {
+        output: '',
+        error: `Backend execution failed and ${language} does not support client-side execution fallbacks.`,
+        execution_time: 0,
+        success: false,
+        method_used: executionMethod
+      };
+    }
+    
+    // Try client-side fallbacks based on language
+    try {
+      if (language === 'python' && window.pyodide) {
+        // Pyodide execution
+        executionMethod = 'client-pyodide';
+        console.log('Attempting Pyodide execution fallback');
+        
+        try {
+          const startTime = performance.now();
+          
+          // Execute Python code in Pyodide
+          await window.pyodide.loadPackagesFromImports(code);
+          const result = await window.pyodide.runPythonAsync(code);
+          
+          return {
+            output: result ? result.toString() : 'Execution completed successfully.',
+            error: null,
+            execution_time: (performance.now() - startTime) / 1000,
+            success: true,
+            method_used: executionMethod
+          };
+        } catch (pyodideError) {
+          console.error('Pyodide execution failed:', pyodideError);
+          return {
+            output: '',
+            error: pyodideError.toString(),
+            execution_time: 0,
+            success: false,
+            method_used: executionMethod
+          };
+        }
+      } else if (language === 'javascript' || language === 'typescript' || language === 'react-native') {
+        // JavaScript/TypeScript/React Native client-side execution
+        executionMethod = 'client-js-eval';
+        console.log(`Attempting ${language} client-side execution`);
+        
+        // Capture console.log output
+        const originalLog = console.log;
+        const logs = [];
+        
+        console.log = (...args) => {
+          logs.push(args.join(' '));
+          originalLog.apply(console, args);
+        };
+        
+        // Execute with timeout and error handling
+        const startTime = performance.now();
+        try {
+          // For React Native, only validate JSX syntax
+          if (language === 'react-native') {
+            // Simple JSX validation by checking for balanced tags and valid syntax
+            const jsxErrors = validateJSXSyntax(code);
+            
+            // Restore console.log
+            console.log = originalLog;
+            
+            if (jsxErrors.length > 0) {
+              return {
+                output: 'JSX validation completed',
+                error: jsxErrors.join('\n'),
+                execution_time: (performance.now() - startTime) / 1000,
+                success: false,
+                method_used: 'client-jsx-validation'
+              };
+            }
+            
+            return {
+              output: 'React Native code validated successfully. Cannot execute in browser environment.',
+              error: null,
+              execution_time: (performance.now() - startTime) / 1000,
+              success: true,
+              method_used: 'client-jsx-validation'
+            };
+          }
+          
+          // Using Function is slightly safer than eval
+          new Function(code)();
+          
+          // Restore console.log
+          console.log = originalLog;
+          
+          return {
+            output: logs.join('\n'),
+            error: null,
+            execution_time: (performance.now() - startTime) / 1000,
+            success: true,
+            method_used: executionMethod
+          };
+        } catch (jsError) {
+          // Restore console.log
+          console.log = originalLog;
+          
+          return {
+            output: logs.join('\n'),
+            error: jsError.toString(),
+            execution_time: (performance.now() - startTime) / 1000,
+            success: false,
+            method_used: executionMethod
+          };
+        }
+      } else if (language === 'html' || language === 'css') {
+        // HTML/CSS preview is handled by the CodeEditor component
+        executionMethod = 'client-iframe';
+        return {
+          output: 'HTML/CSS preview handled by UI component',
+          error: null,
+          execution_time: 0,
+          success: true,
+          method_used: executionMethod
+        };
+      } else if (language === 'cpp' || language === 'c++') {
+        // C++ client-side execution using JSCPP
+        executionMethod = 'client-jscpp';
+        console.log('Attempting C++ client-side execution');
+        
+        // We'll need to dynamically load JSCPP if it's not already loaded
+        if (!window.JSCPP) {
+          console.log('Loading JSCPP library...');
+          try {
+            // First try to load from CDN
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = 'https://cdn.jsdelivr.net/npm/jscpp@3.0.0/dist/JSCPP.es5.min.js';
+              script.onload = resolve;
+              script.onerror = () => reject(new Error('Failed to load JSCPP from CDN'));
+              document.head.appendChild(script);
+            });
+          } catch (cdnError) {
+            console.warn('Failed to load JSCPP from CDN, trying fallback local copy', cdnError);
+            // Fallback to local copy if available
+            try {
+              await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = '/lib/jscpp.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+              });
+            } catch (localError) {
+              return {
+                output: '',
+                error: 'C++ execution failed: Could not load JSCPP library',
+                execution_time: 0,
+                success: false,
+                method_used: executionMethod
+              };
+            }
+          }
+        }
+        
+        // Execute C++ code with JSCPP
+        const startTime = performance.now();
+        try {
+          // Capture stdout using our custom config
+          let output = '';
+          const config = {
+            stdio: {
+              write: function(s) {
+                output += s;
+                return s.length;
+              }
+            }
+          };
+          
+          // Add standard C++ main function wrapper if not provided
+          let fullCode = code;
+          if (!code.includes('int main')) {
+            fullCode = `
+#include <iostream>
+
+int main() {
+${code}
+  return 0;
+}
+`;
+          }
+          
+          // Execute the C++ code
+          const exitCode = window.JSCPP.run(fullCode, '', config);
+          
+          return {
+            output: output,
+            exitCode: exitCode,
+            execution_time: (performance.now() - startTime) / 1000,
+            success: true,
+            method_used: executionMethod
+          };
+        } catch (cppError) {
+          return {
+            output: '',
+            error: cppError.toString(),
+            execution_time: (performance.now() - startTime) / 1000,
+            success: false,
+            method_used: executionMethod
+          };
+        }
+      } else {
+        // For other languages with client execution capabilities, perform basic syntax validation
+        executionMethod = 'client-syntax-validation';
+        console.log(`Attempting basic syntax validation for ${language}`);
+        
+        const validationResult = basicSyntaxValidation(code, language);
+        return {
+          output: validationResult.valid ? 
+            `${language} code passed basic syntax validation. Full execution requires backend.` : '',
+          error: validationResult.valid ? null : validationResult.errors.join('\n'),
+          execution_time: 0,
+          success: validationResult.valid,
+          method_used: executionMethod
+        };
+      }
+    } catch (clientError) {
+      console.error('Client-side execution failed:', clientError);
+    }
+    
+    // If all fallbacks failed, return formatted error
+    return {
+      output: '',
+      error: `All execution methods failed. Backend error: ${backendError.message || 'Connection failed'}`,
+      execution_time: 0,
+      success: false,
+      method_used: 'all-failed'
+    };
+  }
+}
+
+// Helper function to perform basic JSX syntax validation
+function validateJSXSyntax(code) {
+  const errors = [];
+  
+  try {
+    // Very basic validation of React component structure
+    if (!code.includes('import React')) {
+      errors.push('Warning: Missing React import');
+    }
+    
+    // Check for balanced JSX tags using a simple stack
+    const stack = [];
+    const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)/g;
+    const selfClosingRegex = /<[a-zA-Z][a-zA-Z0-9]*[^>]*\/>/g;
+    
+    // Remove self-closing tags from consideration
+    const codeWithoutSelfClosing = code.replace(selfClosingRegex, '');
+    
+    let match;
+    while ((match = tagRegex.exec(codeWithoutSelfClosing)) !== null) {
+      const [fullTag, tagName] = match;
+      
+      if (fullTag.startsWith('</')) {
+        // Closing tag
+        if (stack.length === 0 || stack[stack.length - 1] !== tagName) {
+          errors.push(`Unmatched closing tag: ${fullTag}`);
+        } else {
+          stack.pop();
+        }
+      } else {
+        // Opening tag (if not self-closing)
+        if (!fullTag.endsWith('/>')) {
+          stack.push(tagName);
+        }
+      }
+    }
+    
+    if (stack.length > 0) {
+      errors.push(`Unclosed tags: ${stack.join(', ')}`);
+    }
+    
+    // Check for export statement in React Native
+    if (!code.includes('export default')) {
+      errors.push('Warning: Component should have an export default statement');
+    }
+  } catch (e) {
+    errors.push(`Syntax error: ${e.message}`);
+  }
+  
+  return errors;
+}
+
+// Helper function to perform basic syntax validation for various languages
+function basicSyntaxValidation(code, language) {
+  let valid = true;
+  const errors = [];
+  
+  try {
+    switch (language) {
+      case 'go':
+        // Check for basic Go syntax errors
+        if (!code.includes('package')) {
+          errors.push('Missing package declaration');
+          valid = false;
+        }
+        
+        // Check for unbalanced braces
+        const goBraces = countBraces(code);
+        if (goBraces !== 0) {
+          errors.push(`Unbalanced braces: ${goBraces > 0 ? 'missing closing braces' : 'too many closing braces'}`);
+          valid = false;
+        }
+        break;
+        
+      case 'rust':
+        // Check for basic Rust syntax
+        if (code.includes('fn main') && !code.includes('{')) {
+          errors.push('Function declaration missing opening brace');
+          valid = false;
+        }
+        
+        // Check for unbalanced braces
+        const rustBraces = countBraces(code);
+        if (rustBraces !== 0) {
+          errors.push(`Unbalanced braces: ${rustBraces > 0 ? 'missing closing braces' : 'too many closing braces'}`);
+          valid = false;
+        }
+        break;
+        
+      case 'swift':
+        // Very basic Swift syntax checking
+        if (code.includes('func') && !code.includes('{')) {
+          errors.push('Function declaration missing opening brace');
+          valid = false;
+        }
+        break;
+        
+      case 'kotlin':
+        // Basic Kotlin syntax checking
+        if (code.includes('fun') && !code.includes('{')) {
+          errors.push('Function declaration missing opening brace');
+          valid = false;
+        }
+        break;
+        
+      case 'dart':
+        // Basic Dart syntax checking
+        if (!code.includes('void main') && !code.includes('class')) {
+          errors.push('Missing main function or class declaration');
+          valid = false;
+        }
+        
+        // Check for unbalanced braces
+        const dartBraces = countBraces(code);
+        if (dartBraces !== 0) {
+          errors.push(`Unbalanced braces: ${dartBraces > 0 ? 'missing closing braces' : 'too many closing braces'}`);
+          valid = false;
+        }
+        break;
+        
+      case 'csharp':
+      case 'cs':
+        // Basic C# syntax checking
+        if (!code.includes('namespace') && !code.includes('class')) {
+          errors.push('Missing namespace or class declaration');
+          valid = false;
+        }
+        
+        // Check for unbalanced braces
+        const csharpBraces = countBraces(code);
+        if (csharpBraces !== 0) {
+          errors.push(`Unbalanced braces: ${csharpBraces > 0 ? 'missing closing braces' : 'too many closing braces'}`);
+          valid = false;
+        }
+        break;
+        
+      default:
+        // For unknown languages, assume valid but warn
+        errors.push(`Cannot validate syntax for ${language} in client`);
+    }
+  } catch (e) {
+    valid = false;
+    errors.push(`Validation error: ${e.message}`);
+  }
+  
+  return { valid, errors };
+}
+
+// Helper function to check for balanced braces
+function countBraces(code) {
+  let count = 0;
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '{') count++;
+    else if (code[i] === '}') count--;
+  }
+  return count;
+}
+
+// File management APIs
+export async function getFiles() {
+  try {
+    const response = await apiClient.get('/files');
+    return response.data.files;
+  } catch (error) {
+    console.error('Failed to fetch files:', error);
+    
+    // Fallback: Try to get files from local database
+    try {
+      const files = await queryFallbackDB(STORES.FILES);
+      return files;
+    } catch (dbError) {
+      console.error('Fallback database also failed:', dbError);
+      return [];
+    }
+  }
+}
+
+export async function saveFile(filename, content, language) {
+  const file = {
+    filename,
+    content,
+    language,
+    updated_at: new Date().toISOString()
+  };
+  
+  try {
+    const response = await apiClient.post('/files', file);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to save file on server:', error);
+    
+    // Fallback: Save to local database
+    try {
+      await saveToFallbackDB(STORES.FILES, file);
+      console.log('File saved to fallback database');
+      return { success: true, fallback: true, file };
+    } catch (dbError) {
+      console.error('Fallback database save also failed:', dbError);
+      throw new Error('Failed to save file both remotely and locally');
+    }
+  }
+}
+
+export async function getFile(filename) {
+  try {
+    const response = await apiClient.get(`/files/${encodeURIComponent(filename)}`);
+    return response.data.file;
+  } catch (error) {
+    console.error(`Failed to fetch file ${filename}:`, error);
+    
+    // Fallback: Try to get file from local database
+    try {
+      const file = await getFromFallbackDB(STORES.FILES, filename);
+      if (file) return file;
+      throw new Error('File not found in fallback database');
+    } catch (dbError) {
+      console.error('Fallback database fetch also failed:', dbError);
+      throw new Error(`Failed to fetch file ${filename} from both server and local database`);
+    }
+  }
+}
+
+export async function deleteFile(filename) {
+  try {
+    const response = await apiClient.delete(`/files/${encodeURIComponent(filename)}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Failed to delete file ${filename}:`, error);
+    throw new Error(`Failed to delete file ${filename}`);
+  }
+}
+
+// Initialize fallback database
+initFallbackDatabase();
+
+// Export API client for direct usage
+export default {
+  getBaseUrl,
+  checkHealth,
+  chat,
+  execute,
+  getFiles,
+  saveFile,
+  getFile,
+  deleteFile
+};

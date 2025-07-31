@@ -1,0 +1,15 @@
+// This file has been modularized into the ProjectDashboard folder
+// Please use the new modular components from './ProjectDashboard' instead
+
+// The ProjectDashboard has been split into:
+// - Dashboard.jsx - Main container component
+// - ProjectCard.jsx - Individual project card display
+// - ProjectFilters.jsx - Filter tabs for project types
+// - ProjectGrid.jsx - Grid layout for project cards
+// - LoadingState.jsx - Loading indicator
+// - ErrorState.jsx - Error display component
+// - EmptyState.jsx - Empty state display
+// - projectUtils.js - Utility functions with comprehensive fallbacks
+
+// Import the new modular Dashboard:
+// import ProjectDashboard from './ProjectDashboard';

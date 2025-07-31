@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coder Platform</title>
+  <style>
+    /* Reset all browser styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body, html {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    
+    /* Navbar styles */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background-color: #1a1a1a;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      z-index: 2147483647; /* Maximum z-index */
+      border-bottom: 2px solid #4a8df6;
+    }
+    
+    .navbar-left {
+      display: flex;
+      align-items: center;
+    }
+    
+    .navbar-title {
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    .navbar-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .navbar-btn {
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: white;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .navbar-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    .btn-projects {
+      background-color: #4a8df6;
+    }
+    
+    .btn-new {
+      background-color: #34a853;
+    }
+    
+    .btn-menu {
+      background-color: #FF5722;
+    }
+    
+    .btn-help {
+      background-color: #9C27B0;
+    }
+    
+    /* App frame styles */
+    .app-frame {
+      position: fixed;
+      top: 60px; /* Below navbar */
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: calc(100% - 60px);
+      border: none;
+    }
+    
+    /* Pulse animation for New Project button */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.7); }
+      70% { box-shadow: 0 0 0 8px rgba(52, 168, 83, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+    }
+    
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+    
+    /* Loading indicator */
+    .loading {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: opacity 0.5s;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #ddd;
+      border-top-color: #4a8df6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fixed navbar that is guaranteed to show -->
+  <div class="navbar">
+    <div class="navbar-left">
+      <div class="navbar-title">Coder Platform</div>
+    </div>
+    <div class="navbar-right">
+      <button id="projects-btn" class="navbar-btn btn-projects">
+        <span style="font-size:18px">📂</span> Projects
+      </button>
+      <button id="new-btn" class="navbar-btn btn-new pulse">
+        <span style="font-size:18px">✨</span> New Project
+      </button>
+      <button id="menu-btn" class="navbar-btn btn-menu">
+        <span style="font-size:18px">≡</span> Menu
+      </button>
+      <button id="help-btn" class="navbar-btn btn-help">
+        <span style="font-size:18px">❓</span> Help
+      </button>
+    </div>
+  </div>
+  
+  <!-- Loading indicator -->
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div>Loading application...</div>
+  </div>
+  
+  <!-- App iframe -->
+  <iframe id="app-frame" class="app-frame" src="/"></iframe>
+  
+  <script>
+    // Reference to elements
+    const projectsBtn = document.getElementById('projects-btn');
+    const newBtn = document.getElementById('new-btn');
+    const menuBtn = document.getElementById('menu-btn');
+    const helpBtn = document.getElementById('help-btn');
+    const appFrame = document.getElementById('app-frame');
+    const loading = document.getElementById('loading');
+    
+    // Hide loading indicator when iframe is loaded
+    appFrame.addEventListener('load', function() {
+      loading.style.opacity = '0';
+      setTimeout(() => {
+        loading.style.display = 'none';
+      }, 500);
+    });
+    
+    // Projects button
+    projectsBtn.addEventListener('click', function() {
+      try {
+        // Set localStorage in both frames
+        localStorage.setItem('showProjectDashboard', 'true');
+        appFrame.contentWindow.localStorage.setItem('showProjectDashboard', 'true');
+        
+        // Try to find and manipulate project dashboard
+        const contentDocument = appFrame.contentDocument || appFrame.contentWindow.document;
+        const dashboard = contentDocument.querySelector('.project-dashboard');
+        
+        if (dashboard) {
+          dashboard.style.display = 'flex';
+          dashboard.style.visibility = 'visible';
+          dashboard.style.opacity = '1';
+          console.log('Projects dashboard shown');
+        }
+        
+        // Dispatch custom event
+        const event = new CustomEvent('forceProjectDashboardOpen');
+        contentDocument.dispatchEvent(event);
+      } catch (error) {
+        console.error('Error showing projects:', error);
+        // Open direct menu as fallback
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // New project button
+    newBtn.addEventListener('click', function() {
+      try {
+        const contentDocument = appFrame.contentDocument || appFrame.contentWindow.document;
+        const buttons = contentDocument.querySelectorAll('button');
+        let found = false;
+        
+        // Look for New Project button
+        for (const btn of buttons) {
+          if (btn.textContent.includes('New Project') || 
+              btn.textContent.includes('Create Project')) {
+            btn.click();
+            found = true;
+            break;
+          }
+        }
+        
+        if (!found) {
+          console.log('New project button not found');
+          // Open direct menu as fallback
+          window.open('/direct-menu.html', '_blank');
+        }
+      } catch (error) {
+        console.error('Error creating new project:', error);
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // Menu button
+    menuBtn.addEventListener('click', function() {
+      try {
+        const contentDocument = appFrame.contentDocument || appFrame.contentWindow.document;
+        const menu = contentDocument.querySelector('.main-menu-container');
+        
+        if (menu) {
+          menu.style.display = 'block';
+          menu.style.visibility = 'visible';
+          menu.style.opacity = '1';
+          
+          // Find hamburger button
+          const hamburger = menu.querySelector('.hamburger-button');
+          if (hamburger) {
+            setTimeout(() => hamburger.click(), 100);
+          }
+        }
+        
+        // Dispatch custom event
+        const event = new CustomEvent('customOpenMainMenu');
+        contentDocument.dispatchEvent(event);
+      } catch (error) {
+        console.error('Error opening menu:', error);
+        window.open('/direct-menu.html', '_blank');
+      }
+    });
+    
+    // Help button
+    helpBtn.addEventListener('click', function() {
+      window.open('/direct-menu.html', '_blank');
+    });
+    
+    // Handle cross-origin issues
+    window.addEventListener('error', function(e) {
+      if (e.message === 'SecurityError' || e.message.includes('cross-origin')) {
+        console.warn('Cross-origin issue detected, using fallback methods');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Direct Menu Access</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #1e1e1e;
+      color: white;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    
+    .container {
+      max-width: 800px;
+      width: 90%;
+      background-color: #2d2d2d;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    
+    h1 {
+      color: #4a8df6;
+      margin-bottom: 30px;
+      border-bottom: 1px solid #444;
+      padding-bottom: 15px;
+    }
+    
+    .button-row {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    
+    .mega-button {
+      padding: 20px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .mega-button:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    }
+    
+    .icon {
+      font-size: 32px;
+    }
+    
+    .projects {
+      background-color: #4a8df6;
+      color: white;
+    }
+    
+    .new-project {
+      background-color: #34a853;
+      color: white;
+      animation: pulse 2s infinite;
+    }
+    
+    .menu {
+      background-color: #FF5722;
+      color: white;
+    }
+    
+    .code-window {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 30px;
+      text-align: left;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      border: 1px solid #444;
+    }
+    
+    .code-window pre {
+      margin: 0;
+      white-space: pre-wrap;
+    }
+    
+    .note {
+      background-color: rgba(74, 141, 246, 0.1);
+      border-left: 4px solid #4a8df6;
+      padding: 15px;
+      margin-top: 30px;
+      text-align: left;
+      border-radius: 4px;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(52, 168, 83, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Coder Platform Direct Menu</h1>
+    
+    <div class="button-row">
+      <button class="mega-button projects" id="showProjects">
+        <span class="icon">📂</span>
+        <span>Projects Dashboard</span>
+      </button>
+      
+      <button class="mega-button new-project" id="newProject">
+        <span class="icon">✨</span>
+        <span>Create New Project</span>
+      </button>
+      
+      <button class="mega-button menu" id="openMenu">
+        <span class="icon">≡</span>
+        <span>Main Menu</span>
+      </button>
+    </div>
+    
+    <div class="note">
+      <h3>Instructions:</h3>
+      <p>This page provides direct access to key features of the Coder Platform. After clicking a button:</p>
+      <ol>
+        <li>Return to the main application tab/window</li>
+        <li>The requested UI element should appear</li>
+        <li>If nothing happens, try clicking the button again</li>
+      </ol>
+    </div>
+    
+    <div class="code-window">
+      <h3>Manual Control via Console</h3>
+      <pre>
+// Open Projects Dashboard
+localStorage.setItem('showProjectDashboard', 'true');
+document.querySelector('.project-dashboard')?.style.display = 'flex';
+
+// Open Main Menu
+document.querySelector('.main-menu-container')?.style.display = 'block';
+document.querySelector('.hamburger-button')?.click();
+
+// Find and click New Project button
+[...document.querySelectorAll('button')]
+  .find(b => b.textContent.includes('New Project'))?.click();
+      </pre>
+    </div>
+  </div>
+
+  <script>
+    // Function to send command to main app via localStorage
+    function sendCommand(command) {
+      localStorage.setItem('coderCommand', JSON.stringify({
+        action: command,
+        timestamp: Date.now()
+      }));
+      
+      // Also try direct DOM manipulation if this is opened in the same window
+      if (command === 'projects') {
+        try {
+          localStorage.setItem('showProjectDashboard', 'true');
+          const dashboard = document.querySelector('.project-dashboard');
+          if (dashboard) {
+            dashboard.style.display = 'flex';
+            dashboard.style.visibility = 'visible';
+            dashboard.style.opacity = '1';
+          }
+          
+          // Try to find any projects button and click it
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            if (btn.textContent.includes('Projects') || 
+                btn.textContent.includes('Dashboard')) {
+              btn.click();
+              break;
+            }
+          }
+        } catch (e) {
+          console.error('Error opening projects:', e);
+        }
+      }
+      else if (command === 'newProject') {
+        try {
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            if (btn.textContent.includes('New Project') || 
+                btn.textContent.includes('Create')) {
+              btn.click();
+              break;
+            }
+          }
+        } catch (e) {
+          console.error('Error creating project:', e);
+        }
+      }
+      else if (command === 'menu') {
+        try {
+          const menu = document.querySelector('.main-menu-container');
+          if (menu) {
+            menu.style.display = 'block';
+            menu.style.visibility = 'visible';
+            menu.style.opacity = '1';
+            
+            // Try to find hamburger button and click it
+            const hamburger = menu.querySelector('.hamburger-button');
+            if (hamburger) {
+              setTimeout(() => hamburger.click(), 100);
+            }
+          }
+        } catch (e) {
+          console.error('Error opening menu:', e);
+        }
+      }
+      
+      // Alert user to check main application
+      alert(`Command "${command}" sent. Please check the main application window/tab.`);
+    }
+    
+    // Add event listeners
+    document.getElementById('showProjects').addEventListener('click', () => sendCommand('projects'));
+    document.getElementById('newProject').addEventListener('click', () => sendCommand('newProject'));
+    document.getElementById('openMenu').addEventListener('click', () => sendCommand('menu'));
+    
+    // Announce page is ready
+    console.log('Direct menu page loaded and ready');
+  </script>
+</body>
+</html>

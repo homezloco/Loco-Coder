@@ -1,0 +1,261 @@
+/* layout.css - Styling for enhanced layout components */
+
+/* Dashboard Layout - Windsurf style */
+.dashboard-layout-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.layout-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+  background-color: var(--panel-header-bg, #f5f5f5);
+  border-bottom: 1px solid var(--panel-border, #e0e0e0);
+  z-index: 10;
+  height: 44px;
+  box-sizing: border-box;
+}
+
+:root[data-theme="dark"] .layout-controls {
+  background-color: var(--panel-header-bg-dark, #2d2d2d);
+  border-color: var(--panel-border-dark, #444);
+}
+
+.layout-presets {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Panel styling */
+.dashboard-panel-group {
+  display: flex;
+  height: calc(100% - 44px);
+  overflow: hidden;
+}
+
+.dashboard-panel-group.horizontal {
+  flex-direction: row;
+}
+
+.dashboard-panel-group.vertical {
+  flex-direction: column;
+}
+
+.dashboard-panel {
+  height: 100%;
+  overflow: auto;
+  position: relative;
+}
+
+.resizable-handle {
+  flex: 0 0 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--resize-handle-bg, #e0e0e0);
+  cursor: col-resize;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.resizable-handle.horizontal {
+  cursor: col-resize;
+}
+
+.resizable-handle.vertical {
+  cursor: row-resize;
+}
+
+:root[data-theme="dark"] .resizable-handle {
+  background-color: var(--resize-handle-bg-dark, #444);
+}
+
+.resizable-handle:hover,
+.resizable-handle.dragging {
+  background-color: var(--resize-handle-hover-bg, #2196f3);
+}
+
+.resizable-handle-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.handle-dots {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.dot {
+  width: 4px;
+  height: 4px;
+  background-color: var(--resize-handle-icon, #999);
+  border-radius: 50%;
+}
+
+:root[data-theme="dark"] .dot {
+  background-color: var(--resize-handle-icon-dark, #777);
+}
+
+.resizable-handle:hover .dot,
+.resizable-handle.dragging .dot {
+  background-color: var(--resize-handle-hover-icon, #fff);
+}
+
+
+/* Output panel control buttons */
+.output-panel-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+  background-color: var(--panel-header-bg, #f5f5f5);
+  border-bottom: 1px solid var(--panel-border, #e0e0e0);
+  gap: 10px;
+  z-index: 10;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+:root[data-theme="dark"] .output-panel-controls {
+  background-color: var(--panel-header-bg-dark, #2d2d2d);
+  border-color: var(--panel-border-dark, #444);
+}
+
+.layout-preset-btn {
+  padding: 4px 12px;
+  background-color: var(--button-bg, #ffffff);
+  border: 1px solid var(--button-border, #dddddd);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+:root[data-theme="dark"] .layout-preset-btn {
+  background-color: var(--button-bg-dark, #3a3a3a);
+  border-color: var(--button-border-dark, #555);
+  color: var(--text-color-dark, #e0e0e0);
+}
+
+.layout-preset-btn:hover {
+  background-color: var(--button-hover-bg, #f0f0f0);
+  border-color: var(--button-hover-border, #aaa);
+}
+
+:root[data-theme="dark"] .layout-preset-btn:hover {
+  background-color: var(--button-hover-bg-dark, #505050);
+  border-color: var(--button-hover-border-dark, #777);
+}
+
+.layout-preset-btn.active {
+  background-color: var(--active-button-bg, #e3f2fd);
+  border-color: var(--active-button-border, #2196f3);
+  color: var(--active-button-text, #2196f3);
+}
+
+:root[data-theme="dark"] .layout-preset-btn.active {
+  background-color: var(--active-button-bg-dark, #1a3f5e);
+  border-color: var(--active-button-border-dark, #2196f3);
+  color: var(--active-button-text-dark, #90caf9);
+}
+
+/* Enhanced resize handle with better visibility */
+.panel-resize-handle.enhanced {
+  width: 6px;
+  margin: 0 -3px;
+  background-color: var(--resize-handle-bg, #e0e0e0);
+  position: relative;
+}
+
+:root[data-theme="dark"] .panel-resize-handle.enhanced {
+  background-color: var(--resize-handle-bg-dark, #444);
+}
+
+.panel-resize-handle.enhanced::after {
+  content: "⋮";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--resize-handle-icon, #999);
+  font-size: 16px;
+}
+
+:root[data-theme="dark"] .panel-resize-handle.enhanced::after {
+  color: var(--resize-handle-icon-dark, #777);
+}
+
+.panel-resize-handle.enhanced:hover {
+  background-color: var(--resize-handle-hover-bg, #2196f3);
+}
+
+.panel-resize-handle.enhanced:hover::after {
+  color: var(--resize-handle-hover-icon, #fff);
+}
+
+/* Terminal container adjustments */
+.terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 150px;
+  width: 100%;
+}
+
+/* Make terminal flash more subtle */
+.flash-content {
+  animation: flash-animation 0.5s ease-out;
+}
+
+@keyframes flash-animation {
+  0% { background-color: rgba(33, 150, 243, 0); }
+  50% { background-color: rgba(33, 150, 243, 0.2); }
+  100% { background-color: rgba(33, 150, 243, 0); }
+}
+
+/* Output main panel adjustments */
+.output-main-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure scrollable panels */
+.scrollable-panel {
+  overflow: auto !important;
+}
+
+/* Responsive adjustments */
+@media (max-height: 700px) {
+  .output-panel-controls {
+    padding: 4px;
+    height: 32px;
+  }
+  
+  .panel-resize-handle.enhanced {
+    width: 4px;
+    margin: 0 -2px;
+  }
+}
+
+/* Ensure output is always visible */
+.output-panel {
+  min-height: 150px !important;
+}
+
+.terminal-flexible-output {
+  min-height: 150px;
+}

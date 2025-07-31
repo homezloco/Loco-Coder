@@ -1,0 +1,73 @@
+/* ModelStatusIndicator.css */
+
+.model-status-indicator {
+  position: relative;
+}
+
+.model-status-details {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: 320px;
+  z-index: 100;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+/* Status color transitions */
+.model-status-indicator .status-indicator {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Provider icon animations */
+.model-status-indicator .active-model span:first-child {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .model-status-details {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 350px;
+    max-height: 80vh;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .model-status-details {
+    background-color: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+  
+  .active-model {
+    background-color: #172233 !important;
+    color: #e5e7eb;
+  }
+  
+  .model-item:hover {
+    background-color: #374151 !important;
+  }
+  
+  .model-list th {
+    color: #9ca3af;
+  }
+}

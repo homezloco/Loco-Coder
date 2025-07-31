@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coder Platform Menu</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1e1e1e;
+      color: white;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    h1 {
+      margin-bottom: 30px;
+      text-align: center;
+      color: gold;
+      text-shadow: 0 0 10px rgba(255,215,0,0.5);
+    }
+    
+    .menu-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      max-width: 500px;
+      width: 100%;
+    }
+    
+    .button {
+      padding: 20px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+    
+    .projects {
+      background-color: #4a8df6;
+      color: white;
+      border: 2px solid white;
+    }
+    
+    .new-project {
+      background-color: #34a853;
+      color: white;
+      border: 2px solid white;
+      animation: pulse 2s infinite;
+    }
+    
+    .menu {
+      background-color: #FF5722;
+      color: white;
+      border: 2px solid white;
+    }
+    
+    .instructions {
+      margin-top: 30px;
+      background-color: rgba(0,0,0,0.3);
+      padding: 20px;
+      border-radius: 8px;
+      line-height: 1.6;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(52, 168, 83, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+    }
+  </style>
+</head>
+<body>
+  <h1>Coder Platform Menu</h1>
+  
+  <div class="menu-container">
+    <button class="button projects" onclick="openProjects()">
+      <span style="font-size: 24px;">📂</span> Open Projects Dashboard
+    </button>
+    
+    <button class="button new-project" onclick="createNewProject()">
+      <span style="font-size: 24px;">✨</span> Create New Project
+    </button>
+    
+    <button class="button menu" onclick="openMenu()">
+      <span style="font-size: 24px;">≡</span> Open Main Menu
+    </button>
+  </div>
+  
+  <div class="instructions">
+    <h3>Instructions:</h3>
+    <p>This is a standalone menu page for the Coder Platform. If the main application interface is not showing the menu buttons properly, you can use this page to access key functionality.</p>
+    <p>After clicking a button, return to the main application window to see the results.</p>
+    <p><strong>Note:</strong> This page communicates with the main application using localStorage. If you're having trouble, make sure you have localStorage enabled in your browser.</p>
+  </div>
+  
+  <script>
+    // Function to communicate with main app via localStorage
+    function sendCommand(command) {
+      try {
+        // Store the command with timestamp
+        localStorage.setItem('coderPlatformCommand', JSON.stringify({
+          command: command,
+          timestamp: Date.now()
+        }));
+        
+        // Also try to interact with the main window if this was opened as a popup
+        try {
+          if (window.opener && !window.opener.closed) {
+            if (command === 'openProjects') {
+              window.opener.postMessage({ type: 'openProjects' }, '*');
+            } else if (command === 'newProject') {
+              window.opener.postMessage({ type: 'newProject' }, '*');
+            } else if (command === 'openMenu') {
+              window.opener.postMessage({ type: 'openMenu' }, '*');
+            }
+          }
+        } catch (err) {
+          console.log('Failed to communicate with opener window:', err);
+        }
+        
+        alert('Command sent: ' + command + '\nPlease check the main application window.');
+      } catch (err) {
+        alert('Error: ' + err.message + '\n\nPlease make sure localStorage is enabled.');
+      }
+    }
+    
+    function openProjects() {
+      sendCommand('openProjects');
+    }
+    
+    function createNewProject() {
+      sendCommand('newProject');
+    }
+    
+    function openMenu() {
+      sendCommand('openMenu');
+    }
+    
+    // Add listener for messages from main app
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'confirmation') {
+        alert('Action confirmed: ' + event.data.message);
+      }
+    });
+  </script>
+</body>
+</html>

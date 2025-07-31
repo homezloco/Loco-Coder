@@ -1,0 +1,123 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  
+  server: {
+    port: 5173,
+    host: '0.0.0.0', // Listen on all network interfaces
+    strictPort: true,
+    cors: {
+      origin: '*',
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+    },
+    // Add fallback behavior if the default port is in use
+    hmr: {
+      overlay: true,
+      clientPort: 5173,
+    },
+    watch: {
+      usePolling: true,
+    },
+    // Add proxy configuration for API requests with fallbacks
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (p) => p.replace(/^\/api/, ''),
+        // Try multiple targets if primary fails
+        router: () => {
+          const targets = [
+            'http://localhost:8000',
+            'http://127.0.0.1:8000',
+            'http://172.28.112.1:8000', // WSL host IP
+          ];
+          return targets[Math.floor(Math.random() * targets.length)];
+        },
+        // Fallback handling if primary target fails
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.error('Proxy error:', err);
+            // Try next target
+            const nextTarget = options.router();
+            console.log(`Trying next target: ${nextTarget}`);
+            
+            proxy.web(req, res, { target: nextTarget }, (retryErr) => {
+              console.error('All proxy targets failed:', retryErr);
+              if (!res.headersSent) {
+                res.writeHead(502, {
+                  'Content-Type': 'application/json',
+                  'Access-Control-Allow-Origin': '*',
+                });
+                res.end(JSON.stringify({ 
+                  error: 'Backend connection failed',
+                  message: 'Unable to connect to any backend server. Please check if the backend is running.',
+                  fallback: true
+                }));
+              }
+            });
+          });
+        },
+      },
+    }
+  },
+  
+  // Handle environment variables with fallbacks
+  define: {
+    'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || 'http://localhost:8000'),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+  },
+  
+  // Optimize dependencies
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'axios'],
+    esbuildOptions: {
+      jsx: 'automatic',
+      loader: {
+        '.js': 'jsx',
+        '.jsx': 'jsx'
+      }
+    }
+  },
+  
+  // Add fallbacks for module resolution
+  resolve: {
+    extensions: ['.mjs', '.js', '.jsx', '.ts', '.tsx', '.json'],
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    }
+  },
+  
+  // Configure build options with fallbacks
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false
+      }
+    },
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html')
+      },
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('monaco-editor')) {
+              return 'monaco';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
+});

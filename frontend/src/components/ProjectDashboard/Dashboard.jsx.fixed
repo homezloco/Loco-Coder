@@ -1,0 +1,839 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  checkApiHealth, 
+  fetchProjects, 
+  toggleProjectFavorite, 
+  deleteProject, 
+  searchProjects, 
+  persistProjects 
+} from './projectUtils';
+import * as projectUtils from './projectUtils';
+import ProjectGrid from './ProjectGrid';
+import ProjectFilters from './ProjectFilters';
+import PersistenceStatus from './PersistenceStatus';
+import DashboardControls from './DashboardControls';
+import LoadingState from './LoadingState';
+import ErrorState from './ErrorState';
+import EmptyState from './EmptyState';
+import SyncIndicator from './SyncIndicator';
+
+/**
+ * Main ProjectDashboard component with comprehensive fallbacks
+ * Modularized for better maintainability and organization
+ */
+const Dashboard = ({ 
+  isVisible = true, 
+  onClose, 
+  onProjectSelect,
+  isDarkMode = false,
+  apiEndpoint = 'http://localhost:5000/api'
+}) => {
+  // State management
+  const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [layoutMode, setLayoutMode] = useState('grid');
+  const [dataSource, setDataSource] = useState('loading');
+  const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Checking connection...' });
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'info' });
+  
+  // Refs
+  const dashboardRef = useRef(null);
+  
+  // Effect to focus dashboard on mount for keyboard shortcuts
+  useEffect(() => {
+    if (dashboardRef.current) {
+      dashboardRef.current.focus();
+    }
+  }, []);
+  
+  // Initialize from localStorage/preferences
+  useEffect(() => {
+    // Check for saved layout mode
+    const savedLayoutMode = localStorage.getItem('dashboardLayoutMode');
+    if (savedLayoutMode) {
+      setLayoutMode(savedLayoutMode);
+    }
+    
+    // Check for customization mode
+    const isCustomizing = localStorage.getItem('dashboardCustomizing') === 'true';
+    setIsCustomizing(isCustomizing);
+    
+    // Check for last known API status
+    const lastKnownStatus = localStorage.getItem('lastKnownApiStatus');
+    if (lastKnownStatus) {
+      setApiStatus(prev => ({ ...prev, status: lastKnownStatus }));
+    }
+    
+    // Check for last sync time
+    const storedSyncTime = localStorage.getItem('projectsLastSyncTime');
+    if (storedSyncTime) {
+      setLastSyncTime(parseInt(storedSyncTime, 10));
+    }
+  }, []);
+  
+  // Load projects with robust multi-tiered fallback
+  const loadProjects = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log('Loading projects...');
+      
+      // Check API health first (silently, to avoid redundant notifications)
+      const apiHealth = await checkApiHealth(apiEndpoint, true);
+      console.log('API health check result:', apiHealth);
+      
+      // Attempt to load projects with multi-tiered fallback
+      const result = await fetchProjects(apiEndpoint, {
+        quiet: true, // Suppress console errors during fetch
+        filter: activeFilter !== 'all' ? activeFilter : null,
+        search: searchQuery || null
+      });
+      
+      console.log('Projects loaded from source:', result.source);
+      console.log(`Found ${result.projects.length} projects`);
+      
+      // Update projects state
+      setProjects(result.projects);
+      
+      // Apply filters to the loaded projects
+      let filtered = [...result.projects];
+      
+      // Apply tag/type filter if active
+      if (activeFilter !== 'all') {
+        filtered = filtered.filter(project => {
+          if (activeFilter === 'favorite') return project.favorite;
+          if (activeFilter === 'recent') return true; // We'll sort by date below
+          return project.tags?.includes(activeFilter) || project.type === activeFilter;
+        });
+      }
+      
+      // Apply search filter if present
+      if (searchQuery) {
+        filtered = searchProjects(filtered, searchQuery);
+      }
+      
+      // Sort by relevance if searching, otherwise by recency
+      if (searchQuery) {
+        // Search results are already sorted by relevance by the searchProjects function
+      } else if (activeFilter === 'recent') {
+        // Sort by last accessed for recent view
+        filtered.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+      } else {
+        // Default sort by creation date, newest first
+        filtered.sort((a, b) => (b.created || 0) - (a.created || 0));
+      }
+      
+      setFilteredProjects(filtered);
+      setDataSource(result.source);
+      setError(null);
+      
+      // Handle different data sources with appropriate UI feedback
+      if (result.source === 'API') {
+        // API is online and working
+        const now = Date.now();
+        setLastSyncTime(now);
+        localStorage.setItem('projectsLastSyncTime', now.toString());
+        
+        // Update API status
+        setApiStatus({ 
+          status: 'online', 
+          message: 'Connected to API' 
+        });
+        localStorage.setItem('lastKnownApiStatus', 'online');
+        
+        // Show notification if transitioning from offline/degraded
+        if (apiStatus?.status === 'offline' || apiStatus?.status === 'degraded') {
+          setSnackbar({ 
+            visible: true, 
+            message: 'API connection restored. Using latest data.', 
+            type: 'success' 
+          });
+        }
+      } else if (result.source === 'indexedDB') {
+        // Update API status based on health check
+        const newApiStatus = apiHealth.status === 'offline' ?
+          { status: 'offline', message: 'API offline - using IndexedDB cache' } :
+          { status: 'degraded', message: 'API limited - using IndexedDB cache' };
+        
+        setApiStatus(newApiStatus);
+        localStorage.setItem('lastKnownApiStatus', newApiStatus.status);
+        
+        // Try to retrieve last sync time from localStorage
+        const storedSyncTime = localStorage.getItem('projectsLastSyncTime');
+        if (storedSyncTime) {
+          setLastSyncTime(parseInt(storedSyncTime, 10));
+        }
+        
+        // Show notification about fallback storage if transitioning from online
+        if (apiStatus?.status === 'online') {
+          setSnackbar({ 
+            visible: true, 
+            message: 'Working in offline mode. Using IndexedDB cache.', 
+            type: 'warning' 
+          });
+        }
+      } else if (result.source === 'localStorage' || result.source === 'sessionStorage') {
+        // Update API status based on health check
+        const newApiStatus = apiHealth.status === 'offline' ?
+          { status: 'offline', message: `API offline - using ${result.source}` } :
+          { status: 'degraded', message: `API limited - using ${result.source}` };
+        
+        setApiStatus(newApiStatus);
+        localStorage.setItem('lastKnownApiStatus', newApiStatus.status);
+        
+        // Try to retrieve last sync time from localStorage
+        const storedSyncTime = localStorage.getItem('projectsLastSyncTime');
+        if (storedSyncTime) {
+          setLastSyncTime(parseInt(storedSyncTime, 10));
+        }
+        
+        // Show notification about fallback storage if transitioning from online
+        if (apiStatus?.status === 'online') {
+          setSnackbar({ 
+            visible: true, 
+            message: `Working in offline mode. Using ${result.source} fallback data.`,
+            type: 'warning' 
+          });
+        }
+      } else {
+        // Using demo data (ultimate fallback)
+        setApiStatus({ status: 'offline', message: 'No connection - using demo data' });
+        localStorage.setItem('lastKnownApiStatus', 'offline');
+        
+        // No sync time for demo data
+        setLastSyncTime(null);
+        
+        // Show notification about demo data
+        setSnackbar({ 
+          visible: true, 
+          message: 'No stored data found. Using demo projects.', 
+          type: 'info' 
+        });
+      }
+      
+      // If API response included an error but we have fallback data, show it as a warning
+      if (result.error && !result.suppressErrorNotification && result.projects.length > 0) {
+        // Extract the most relevant part of the error message
+        const errorMessage = result.error.includes(':') ? 
+          result.error.split(':')[1].trim() : result.error;
+          
+        setSnackbar({
+          visible: true,
+          message: `API issue: ${errorMessage}. Using fallback data.`,
+          type: 'warning'
+        });
+      }
+      
+      // Set error if one was returned and we have no fallback data
+      if (result.error && result.projects.length === 0) {
+        console.warn('Project loading had issues:', result.error);
+        setError(result.error);
+        
+        setSnackbar({
+          visible: true,
+          message: `Failed to load projects: ${result.error}`,
+          type: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+      setError(error.message);
+      setApiStatus({ status: 'error', message: 'Error loading projects' });
+      
+      setSnackbar({
+        visible: true,
+        message: `Error loading projects: ${error.message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeFilter, searchQuery, apiStatus, apiEndpoint]);
+  
+  // Manual sync function to fetch fresh data from API
+  const syncWithAPI = async () => {
+    // Don't attempt sync if already syncing
+    if (isSyncing) {
+      setSnackbar({ visible: true, message: 'Sync already in progress', type: 'info' });
+      return;
+    }
+    
+    setIsSyncing(true);
+    setSnackbar({ visible: true, message: 'Checking connection status...', type: 'info' });
+    
+    try {
+      // First check API health with timeout to avoid long waits
+      const apiHealth = await checkApiHealth(apiEndpoint, false);
+      
+      if (apiHealth.status === 'offline') {
+        // API is offline, provide user feedback
+        setSnackbar({
+          visible: true, 
+          message: 'Cannot sync while offline. Using cached data.', 
+          type: 'warning'
+        });
+        setApiStatus({ status: 'offline', message: 'Working offline - no connection' });
+        setIsSyncing(false);
+        return;
+      }
+      
+      // API appears to be available, attempt actual sync
+      setSnackbar({ visible: true, message: 'Syncing with API...', type: 'info' });
+      
+      // Use AbortController to avoid hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+      
+      try {
+        const response = await fetch(`${apiEndpoint}/projects`, { 
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        // Clear timeout since the request completed
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const freshData = await response.json();
+          if (Array.isArray(freshData) && freshData.length > 0) {
+            // Update projects and persist to all storage mechanisms
+            setProjects(freshData);
+            await persistProjects(freshData);
+            
+            // Update sync status
+            const now = Date.now();
+            setLastSyncTime(now);
+            localStorage.setItem('projectsLastSyncTime', now.toString());
+            
+            setDataSource('API');
+            setApiStatus({ status: 'online', message: 'Data synchronized with API' });
+            
+            // Show success message
+            setSnackbar({
+              visible: true, 
+              message: `Projects successfully synchronized (${freshData.length} items)`, 
+              type: 'success'
+            });
+            setIsSyncing(false);
+            return;
+          } else {
+            // API returned empty array or non-array
+            setSnackbar({
+              visible: true, 
+              message: 'API returned no valid projects. Using cached data.', 
+              type: 'warning'
+            });
+          }
+        } else {
+          // API response was not OK
+          setSnackbar({
+            visible: true, 
+            message: `API error: ${response.status} ${response.statusText}`, 
+            type: 'error'
+          });
+        }
+      } catch (fetchError) {
+        // Handle fetch errors (including timeout)
+        if (fetchError.name === 'AbortError') {
+          setSnackbar({
+            visible: true, 
+            message: 'API request timed out. Using cached data.', 
+            type: 'warning'
+          });
+        } else {
+          setSnackbar({
+            visible: true, 
+            message: `Sync failed: ${fetchError.message}`, 
+            type: 'error'
+          });
+        }
+        
+        // Mark API as offline temporarily to avoid more failed attempts
+        setApiStatus({ status: 'offline', message: 'Connection failed - working offline' });
+      }
+    } catch (error) {
+      // Catch any other unexpected errors
+      setSnackbar({ visible: true, message: `Sync error: ${error.message}`, type: 'error' });
+      console.error('Sync failed:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  
+  // Handle project selection
+  const handleSelectProject = (project) => {
+    if (onProjectSelect && project) {
+      onProjectSelect(project);
+    }
+    setSelectedProjectId(project.id);
+  };
+  
+  // Handle project order change from drag-and-drop
+  const handleProjectOrderChange = (reorderedProjects) => {
+    // We don't update the main projects array to avoid refetching,
+    // but we do update the filtered view
+    setFilteredProjects(reorderedProjects);
+    
+    // Optionally save the new order to localStorage
+    localStorage.setItem('projectOrder', JSON.stringify(reorderedProjects.map(p => p.id)));
+  };
+  
+  // Toggle customization mode with persistence
+  const toggleCustomizing = () => {
+    const newValue = !isCustomizing;
+    setIsCustomizing(newValue);
+    
+    // Store user preference
+    localStorage.setItem('dashboardCustomizing', newValue ? 'true' : 'false');
+    
+    if (newValue) {
+      setSnackbar({
+        visible: true,
+        message: 'Customization mode enabled. Drag items to reorder.',
+        type: 'info'
+      });
+    } else {
+      // Only show this if we're turning it off
+      setSnackbar({
+        visible: true,
+        message: 'Project order saved.',
+        type: 'success'
+      });
+      
+      // Persist the current order to the API if online
+      if (apiStatus?.status === 'online' && filteredProjects.length > 0) {
+        // Save project order to user preferences
+        // This would typically call an API endpoint
+        console.log('Would save project order to API:', 
+          filteredProjects.map(p => p.id));
+      }
+    }
+  };
+  
+  // Change dashboard layout mode with multi-tiered persistence
+  const changeLayoutMode = (mode) => {
+    if (mode === layoutMode) return;
+    
+    setLayoutMode(mode);
+    
+    // Persist to localStorage for offline preference
+    localStorage.setItem('dashboardLayoutMode', mode);
+    
+    // Multi-tier persistence
+    try {
+      // Persist to API if online (simulated)
+      if (apiStatus?.status === 'online') {
+        console.log(`Would persist layout mode ${mode} to user preferences API`);
+      }
+      
+      // IndexedDB persistence would go here
+      // userPreferences.savePreference('dashboardLayoutMode', mode);
+      
+      setSnackbar({
+        visible: true,
+        message: `View changed to ${mode} layout`,
+        type: 'info'
+      });
+    } catch (error) {
+      console.error('Failed to save layout preference:', error);
+    }
+  };
+  
+  // Open delete confirmation modal
+  const openDeleteConfirmation = (projectId, projectName) => {
+    setProjectToDelete({
+      id: projectId,
+      name: projectName
+    });
+    setIsDeleteModalOpen(true);
+  };
+  
+  // Handle project selection with multi-tiered persistence
+  const handleProjectSelect = (projectId) => {
+    setSelectedProjectId(projectId);
+    const selectedProject = projects.find(p => p.id === projectId);
+    if (!selectedProject) return;
+    console.log(`Selected project: ${selectedProject.name}`);
+    const updatedProjects = projects.map(project => 
+      project.id === projectId 
+        ? { ...project, lastAccessed: Date.now() }
+        : project
+    );
+    setProjects(updatedProjects);
+    try {
+      projectUtils.persistProjects(updatedProjects)
+        .then(({ success, source }) => {
+          console.log(`Project selection persisted to ${source}: ${success}`);
+        })
+        .catch(error => {
+          console.error('Error persisting project selection:', error);
+        });
+    } catch (error) {
+      console.error('Error updating project access time:', error);
+    }
+  };
+  
+  // Handle project deletion
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+    
+    try {
+      // Delete project with multi-tiered fallback
+      const result = await deleteProject(projectToDelete.id);
+      
+      if (result.success) {
+        // Update local state after successful deletion
+        const updatedProjects = projects.filter(p => p.id !== projectToDelete.id);
+        setProjects(updatedProjects);
+        setFilteredProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
+        
+        setSnackbar({
+          visible: true,
+          message: `Project "${projectToDelete.name}" deleted`,
+          type: 'success'
+        });
+      } else {
+        throw new Error(result.error || 'Unknown error deleting project');
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      setSnackbar({
+        visible: true,
+        message: `Failed to delete project: ${error.message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsDeleteModalOpen(false);
+      setProjectToDelete(null);
+    }
+  };
+  
+  // Handle dashboard close
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+  
+  // Handle new project creation
+  const handleCreateProject = async () => {
+    try {
+      // Generate a new project with default values
+      const newProject = {
+        id: `project-${Date.now()}`, // Simple unique ID generation
+        name: `New Project ${Math.floor(Math.random() * 1000)}`,
+        description: 'A new project created from the dashboard',
+        created: Date.now(),
+        lastAccessed: Date.now(),
+        favorite: false,
+        type: 'generic',
+        tags: ['new'],
+        // Add any other default fields as needed
+      };
+      
+      // Add to local state first for immediate feedback
+      const updatedProjects = [newProject, ...projects];
+      setProjects(updatedProjects);
+      
+      // Update filtered view based on current filter
+      if (activeFilter === 'all' || 
+          (activeFilter === 'recent') || 
+          (newProject.tags && newProject.tags.includes(activeFilter)) ||
+          newProject.type === activeFilter) {
+        setFilteredProjects(prev => [newProject, ...prev]);
+      }
+      
+      // Use multi-tiered persistence
+      const result = await persistProjects(updatedProjects);
+      
+      console.log(`Project created and persisted to ${result.source}`);
+      
+      // Show success notification
+      setSnackbar({
+        visible: true,
+        message: `New project created and saved to ${result.source}`,
+        type: 'success'
+      });
+      
+      // Optionally select the new project
+      setSelectedProjectId(newProject.id);
+      
+      return newProject;
+    } catch (error) {
+      console.error('Failed to create new project:', error);
+    }
+  };
+
+  // Only render if visible
+  if (!isVisible) {
+    return null;
+  }
+  
+  // Auto-hide snackbar after a delay
+  useEffect(() => {
+    if (snackbar.visible) {
+      const timer = setTimeout(() => {
+        setSnackbar({ ...snackbar, visible: false });
+      }, 5000); // 5 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [snackbar]);
+  
+  // Load projects on initial render and when filter changes
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects, activeFilter, searchQuery]);
+  
+  return (
+    <div 
+      ref={dashboardRef}
+      className="project-dashboard"
+      tabIndex="0"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+        backdropFilter: 'blur(5px)',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '20px',
+        zIndex: 1000, // High z-index to ensure visibility
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+        color: isDarkMode ? '#eee' : '#333'
+      }}
+      onKeyDown={(e) => {
+        // Keyboard shortcuts
+        if (e.key === 'Escape') handleClose();
+      }}
+    >
+      {/* Dashboard Header */}
+      <div style={{
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px'
+      }}>
+        <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+          <h2 style={{
+            margin: 0,
+            fontSize: '24px',
+            fontWeight: 600,
+            color: isDarkMode ? '#eee' : '#333'
+          }}>
+            Projects Dashboard
+          </h2>
+          
+          {/* Data source and sync status */}
+          <div style={{
+            display: 'flex',
+            fontSize: '14px',
+            color: isDarkMode ? '#aaa' : '#777',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <div>Source: {dataSource}</div>
+            <SyncIndicator 
+              isSyncing={isSyncing} 
+              lastSyncTime={lastSyncTime} 
+              onSync={syncWithAPI} 
+              isDarkMode={isDarkMode} 
+            />
+          </div>
+        </div>
+        
+        {/* Dashboard controls */}
+        <DashboardControls 
+          onClose={handleClose}
+          onCreateProject={handleCreateProject}
+          isCustomizing={isCustomizing}
+          onToggleCustomizing={toggleCustomizing}
+          layoutMode={layoutMode}
+          onChangeLayout={changeLayoutMode}
+          isDarkMode={isDarkMode}
+        />
+      </div>
+      
+      {/* Filters and search */}
+      <ProjectFilters 
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        isDarkMode={isDarkMode}
+      />
+      
+      {/* API Status indicator */}
+      <div style={{
+        padding: '8px 0',
+        marginBottom: '15px'
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center', 
+          gap: '8px'
+        }}>
+          <div className="status-indicator" style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            backgroundColor: apiStatus?.status === 'online' ? '#4CAF50' :
+                             apiStatus?.status === 'degraded' ? '#FFC107' : '#F44336'
+          }}></div>
+          <span className="status-text" style={{ fontSize: '13px', color: isDarkMode ? '#ccc' : '#666' }}>
+            {apiStatus?.status === 'online' ? 'API Connected' : 
+             apiStatus?.status === 'degraded' ? 'Limited Connectivity' : 
+             'API Offline'}
+          </span>
+        </div>
+      </div>
+
+      {/* Main content area */}
+      {isLoading ? (
+        <LoadingState isDarkMode={isDarkMode} message="Loading projects..." />
+      ) : error ? (
+        <ErrorState 
+          error={error} 
+          isDarkMode={isDarkMode}
+          onRetry={loadProjects}
+        />
+      ) : filteredProjects.length > 0 ? (
+        <ProjectGrid
+          projects={filteredProjects}
+          onSelectProject={handleSelectProject}
+          onDeleteProject={openDeleteConfirmation}
+          onToggleFavorite={projectId => {
+            const updatedProjects = projects.map(p => 
+              p.id === projectId ? { ...p, favorite: !p.favorite } : p
+            );
+            setProjects(updatedProjects);
+            setFilteredProjects(prev => 
+              prev.map(p => p.id === projectId ? { ...p, favorite: !p.favorite } : p)
+            );
+            toggleProjectFavorite(projectId);
+          }}
+          selectedProjectId={selectedProjectId}
+          isCustomizing={isCustomizing}
+          onProjectOrderChange={handleProjectOrderChange}
+          layoutMode={layoutMode}
+          isDarkMode={isDarkMode}
+        />
+      ) : filteredProjects.length === 0 && searchQuery ? (
+        <div style={{
+          padding: '40px',
+          textAlign: 'center',
+          color: isDarkMode ? '#aaa' : '#666'
+        }}>
+          <h3>No matching projects</h3>
+          <p>Try adjusting your search or filters</p>
+        </div>
+      ) : (
+        <EmptyState 
+          onCreateProject={handleCreateProject}
+          isDarkMode={isDarkMode}
+        />
+      )}
+      
+      {/* Status snackbar */}
+      {snackbar.visible && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: snackbar.type === 'error' ? '#d32f2f' : 
+                          snackbar.type === 'warning' ? '#f57c00' : 
+                          snackbar.type === 'success' ? '#388e3c' : '#1976d2',
+          color: '#fff',
+          padding: '10px 20px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+          zIndex: 1200,
+          maxWidth: '80%',
+          textAlign: 'center'
+        }}>
+          {snackbar.message}
+        </div>
+      )}
+      
+      {/* Delete confirmation modal */}
+      {isDeleteModalOpen && projectToDelete && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1200
+        }}>
+          <div style={{
+            backgroundColor: isDarkMode ? '#333' : '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            width: '400px',
+            maxWidth: '90%'
+          }}>
+            <h3 style={{color: isDarkMode ? '#eee' : '#333'}}>Delete Project</h3>
+            <p style={{color: isDarkMode ? '#ddd' : '#555'}}>
+              Are you sure you want to delete "{projectToDelete.name}"? This cannot be undone.
+            </p>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              marginTop: '20px'
+            }}>
+              <button 
+                onClick={() => setIsDeleteModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: isDarkMode ? '#555' : '#e0e0e0',
+                  color: isDarkMode ? '#eee' : '#333',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteProject}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: '#d32f2f',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Dashboard;

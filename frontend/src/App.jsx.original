@@ -1,0 +1,1019 @@
+// /project-root/frontend/src/App.jsx
+import React, { useState, useEffect } from 'react';
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle
+} from "react-resizable-panels";
+import LanguageSelectorModal from './components/LanguageSelectorModal';
+import { getLanguageFromFilename } from './api';
+import CodeEditor from './Editor';
+import Terminal from './Terminal';
+import FileBrowser from './FileBrowser';
+import ChatPanel from './ChatPanel';
+import AgentConsensusPanel from './components/AgentConsensusPanel';
+import MainMenu from './components/MainMenu';
+import UserProfilePanel from './components/UserProfilePanel';
+import ProjectDashboard from './components/ProjectDashboard';
+import EmergencyMenu from './components/EmergencyMenu';
+import AbsoluteMenu from './components/AbsoluteMenu';
+import HamburgerTest from './components/HamburgerTest';
+import SystemHealth from './SystemHealth';
+import Login from './Login';
+import TemplateSelector from './TemplateSelector';
+import { 
+  execute, 
+  loadFiles, 
+  loadFile, 
+  saveFile, 
+  checkHealth,
+  isLoggedIn,
+  logout,
+  getUsername,
+  verifyToken
+} from './api';
+import { getAgentConsensusApi } from './utils/agent-consensus-api';
+import './App.css';
+import './terminal-styles.css'; // Terminal component styles
+
+// Adding a simple component that will always be visible
+const SimpleMenuBar = () => {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#333',
+      color: 'white',
+      padding: '10px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      zIndex: 99999,
+      boxShadow: '0 2px 5px rgba(0,0,0,0.5)'
+    }}>
+      <div>
+        <button 
+          onClick={() => {
+            const mainMenuEl = document.querySelector('.main-menu-container');
+            if (mainMenuEl) {
+              mainMenuEl.style.display = 'block';
+              mainMenuEl.style.visibility = 'visible';
+              console.log('Toggling main menu');
+            }
+          }}
+          style={{
+            backgroundColor: '#FF5722',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 12px',
+            marginRight: '10px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          ≡ Menu
+        </button>
+        <span>Coder AI Platform</span>
+      </div>
+      <div>
+        <button
+          onClick={() => {
+            // Show project dashboard
+            const projectDashboard = document.querySelector('.project-dashboard');
+            if (projectDashboard) {
+              projectDashboard.style.display = 'flex';
+              projectDashboard.style.visibility = 'visible';
+              projectDashboard.classList.add('open');
+              console.log('Opening projects');
+            }
+          }}
+          style={{
+            backgroundColor: '#4a8df6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 12px',
+            marginRight: '10px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          📂 Projects
+        </button>
+        <button
+          onClick={() => {
+            // Create new project
+            const createButtons = document.querySelectorAll('button');
+            for (const btn of createButtons) {
+              if (btn.textContent.includes('New Project') || 
+                  btn.textContent.includes('Create')) {
+                btn.click();
+                console.log('Creating new project');
+                break;
+              }
+            }
+          }}
+          style={{
+            backgroundColor: '#34a853',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 12px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          ✨ New Project
+        </button>
+      </div>
+    </div>
+  );
+};
+
+function App() {
+  const [code, setCode] = useState('# Write your Python code here\n');
+  const [output, setOutput] = useState('');
+  const [files, setFiles] = useState([]);
+  const [currentFile, setCurrentFile] = useState(null);
+  const [language, setLanguage] = useState('python');
+  const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Checking API connection...' });
+  const [showSystemHealth, setShowSystemHealth] = useState(false);
+  const [showAgentConsensus, setShowAgentConsensus] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Check local storage or system preference
+    const savedMode = localStorage.getItem('darkMode');
+    if (savedMode !== null) {
+      return savedMode === 'true';
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  
+  // New panel states for user profile and project dashboard with debug logging
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  // Show project dashboard by default when there's no current file
+  const [showProjectDashboard, setShowProjectDashboard] = useState(!currentFile);
+  
+  useEffect(() => {
+    console.log('Panel visibility state:', { showUserProfile, showProjectDashboard });
+  }, [showUserProfile, showProjectDashboard]);
+  
+  // Show project dashboard by default on first load if no file is selected
+  useEffect(() => {
+    if (!currentFile && authenticated) {
+      console.log('First load with no file - showing project dashboard');
+      setShowProjectDashboard(true);
+      
+      // Also attempt to force visibility by sending events
+      setTimeout(() => {
+        const projectButton = document.querySelector('.floating-action-button.projects');
+        if (projectButton) {
+          projectButton.click();
+          console.log('Auto-clicked projects button to ensure dashboard visibility');
+        }
+        
+        // Dispatch a custom event that the ProjectDashboard component can listen for
+        const event = new CustomEvent('forceProjectDashboardOpen');
+        document.dispatchEvent(event);
+      }, 1000);
+    }
+  }, [currentFile, authenticated]);
+  
+  // User preferences state
+  const [userPreferences, setUserPreferences] = useState(() => {
+    const savedPrefs = localStorage.getItem('userPreferences');
+    return savedPrefs ? JSON.parse(savedPrefs) : {
+      defaultLanguage: 'python',
+      editorFontSize: 14,
+      tabSize: 2,
+      autoSave: true,
+      lineNumbers: true,
+      wordWrap: false,
+      useLocalFallbacks: true
+    };
+  });
+
+  // Initialize and check backend connection
+  useEffect(() => {
+    const checkBackendStatus = async () => {
+      try {
+        const health = await checkHealth();
+        if (health.status === 'healthy') {
+          setApiStatus({ status: 'connected', message: 'Connected to backend' });
+          
+          // Check authentication after confirming backend is available
+          const authStatus = await checkAuthStatus();
+          if (authStatus.authenticated) {
+            fetchFiles();
+          }
+        } else {
+          setApiStatus({ status: 'error', message: health.message || 'Backend API error' });
+        }
+      } catch (error) {
+        console.error('Backend connection error:', error);
+        setApiStatus({ 
+          status: 'error', 
+          message: 'Cannot connect to backend server. Make sure it\'s running on http://localhost:8000'
+        });
+      } finally {
+        // Always mark auth as checked even if backend is down
+        setAuthChecked(true);
+      }
+    };
+    
+    checkBackendStatus();
+  }, []);
+  
+  // Check authentication status
+  const checkAuthStatus = async () => {
+    if (isLoggedIn()) {
+      try {
+        const result = await verifyToken();
+        if (result.success) {
+          setAuthenticated(true);
+          setUsername(result.username);
+          setIsAdmin(result.isAdmin);
+          return { authenticated: true };
+        }
+      } catch (error) {
+        console.error('Auth verification error:', error);
+      }
+    }
+    
+    setAuthenticated(false);
+    setUsername('');
+    setIsAdmin(false);
+    return { authenticated: false };
+  };
+
+  const fetchFiles = async () => {
+    try {
+      const fs = await loadFiles();
+      setFiles(fs);
+    } catch (error) {
+      console.error('Error fetching files:', error);
+      setOutput('Error fetching file list: ' + error.message);
+    }
+  };
+
+  const handleLoad = async (filename) => {
+    try {
+      const content = await loadFile(filename);
+      setCode(content);
+      setCurrentFile(filename);
+      
+      // Use the API's getLanguageFromFilename helper
+      const detectedLanguage = getLanguageFromFilename(filename);
+      if (detectedLanguage) {
+        setLanguage(detectedLanguage);
+      }
+      
+    } catch (error) {
+      console.error('Error loading file:', error);
+      setOutput('Error loading file: ' + error.message);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      if (!currentFile) {
+        // If no current file, ask for filename
+        const filename = prompt('Enter filename to save:', 'script.py');
+        if (!filename) return; // User cancelled
+        setCurrentFile(filename);
+        await saveFile(filename, code);
+      } else {
+        await saveFile(currentFile, code);
+      }
+      
+      fetchFiles(); // Refresh file list
+      setOutput(`File ${currentFile} saved successfully!`);
+    } catch (error) {
+      console.error('Error saving file:', error);
+      setOutput('Error saving file: ' + error.message);
+    }
+  };
+
+  const handleSaveAs = async () => {
+    const filename = prompt('Save as:', currentFile || 'script.py');
+    if (!filename) return; // User cancelled
+    
+    try {
+      await saveFile(filename, code);
+      setCurrentFile(filename);
+      fetchFiles(); // Refresh file list
+      setOutput(`File ${filename} saved successfully!`);
+    } catch (error) {
+      console.error('Error saving file:', error);
+      setOutput('Error saving file: ' + error.message);
+    }
+  };
+
+  const handleRun = async () => {
+    setOutput('Running code...');
+    try {
+      const result = await execute(code, language);
+      setOutput(result);
+    } catch (error) {
+      console.error('Error executing code:', error);
+      setOutput('Error executing code: ' + error.message);
+    }
+  };
+
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+
+  const handleNewFile = () => {
+    setShowLanguageSelector(true);
+  };
+  
+  const handleLanguageSelected = (languageData) => {
+    setShowLanguageSelector(false);
+    setCode(languageData.template || '');
+    setLanguage(languageData.id);
+    setCurrentFile(null);
+    setOutput(`Created new ${languageData.name} file. Remember to save with '${languageData.extension}' extension.`);
+  };
+  
+  const handleCancelLanguageSelection = () => {
+    setShowLanguageSelector(false);
+  };
+  
+  const handleNewTemplate = () => {
+    setShowTemplateSelector(true);
+  };
+  
+  const handleProjectCreated = (project) => {
+    setShowTemplateSelector(false);
+    
+    // If this is a local fallback project (client-side only)
+    if (project.isLocalFallback && project.content) {
+      setCode(project.content);
+      setCurrentFile(project.mainFile);
+      setOutput(`Created new project ${project.name} (local fallback mode)`);
+      return;
+    }
+    
+    // For server-created projects
+    if (project.path) {
+      fetchFiles();
+      if (project.mainFile) {
+        handleLoad(project.mainFile);
+      }
+      setOutput(`Created project ${project.name} at ${project.path}`);
+    }
+  };
+  
+  const handleLogin = (username, isAdmin) => {
+    setAuthenticated(true);
+    setUsername(username);
+    setIsAdmin(isAdmin);
+    setShowLogin(false);
+    fetchFiles(); // Load files after login
+  };
+  
+  const handleLogout = async () => {
+    await logout();
+    setAuthenticated(false);
+    setUsername('');
+    setIsAdmin(false);
+    setFiles([]);
+  };
+  
+  const toggleDarkMode = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem('darkMode', newMode.toString());
+    
+    // Apply dark mode to document body
+    if (newMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  };
+  
+  // Update user preferences
+  const updateUserPreferences = (newPrefs) => {
+    setUserPreferences(newPrefs);
+    localStorage.setItem('userPreferences', JSON.stringify(newPrefs));
+  };
+  
+  // Toggle functions for user profile and project dashboard with enhanced visibility control
+  const toggleUserProfile = () => {
+    console.log('Toggling User Profile Panel');
+    // Always close the other panel first
+    setShowProjectDashboard(false);
+    // Then toggle this panel with a slight delay to avoid CSS conflicts
+    setTimeout(() => {
+      setShowUserProfile(prevState => !prevState);
+    }, 50);
+  };
+  
+  const toggleProjectDashboard = () => {
+    console.log('Toggling Project Dashboard Panel');
+    // Always close the other panel first
+    setShowUserProfile(false);
+    // Then toggle this panel with a slight delay to avoid CSS conflicts
+    setTimeout(() => {
+      setShowProjectDashboard(prevState => !prevState);
+    }, 50);
+  };
+  
+  // Apply dark mode on initial render and when it changes
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [isDarkMode]);
+  
+  // Global keyboard shortcuts for panels
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+Alt+U for User Profile
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'u') {
+        toggleUserProfile();
+        e.preventDefault();
+      }
+      // Ctrl+Alt+D for Project Dashboard
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
+        toggleProjectDashboard();
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // For ChatPanel code insertion
+  const codeIntegration = {
+    insertCode: (newCode) => {
+      setCode(prevCode => {
+        // Keep any existing code as comments
+        if (prevCode.trim() && !prevCode.startsWith('#')) {
+          return `# Previous code:\n${prevCode.split('\n').map(line => `# ${line}`).join('\n')}\n\n${newCode}`;
+        }
+        return newCode;
+      });
+    }
+  };
+  
+  return (
+    <>
+      {/* ABSOLUTE MENU - guaranteed visibility regardless of CSS conflicts */}
+      <AbsoluteMenu 
+        onShowProjects={() => {
+          setShowProjectDashboard(true);
+          console.log('AbsoluteMenu Projects button clicked');
+        }}
+        onCreateProject={() => {
+          handleNewTemplate();
+          console.log('AbsoluteMenu New Project button clicked');
+        }}
+        onToggleMainMenu={() => {
+          console.log('AbsoluteMenu Menu button clicked');
+          try {
+            // Dispatch custom event for menu toggle
+            const event = new CustomEvent('customOpenMainMenu', {
+              detail: { source: 'absolute-menu' }
+            });
+            document.dispatchEvent(event);
+          } catch (err) {
+            console.error('Failed to toggle menu:', err);
+          }
+        }}
+      />
+      
+      {/* Existing SimpleMenuBar */}
+      <SimpleMenuBar />
+      
+      {/* Original EmergencyMenu */}
+      <EmergencyMenu 
+        onShowProjects={() => {
+          setShowProjectDashboard(true);
+          console.log('Emergency Projects button clicked');
+        }}
+        onCreateProject={() => {
+          handleNewTemplate();
+          console.log('Emergency New Project button clicked');
+        }}
+        onToggleMainMenu={() => {
+          // Direct manipulation of menu state
+          console.log('Emergency Menu button clicked');
+          try {
+            // Try multiple approaches to show the menu
+            // 1. Dispatch custom event
+            const event = new CustomEvent('customOpenMainMenu', {
+              detail: { source: 'emergency-menu' }
+            });
+            document.dispatchEvent(event);
+            
+            // 2. Try setting menuOpen state if available
+            if (typeof setMenuOpen === 'function') {
+              setMenuOpen(true);
+            }
+            
+            // 3. Direct DOM manipulation as last resort
+            setTimeout(() => {
+              const menuContainer = document.querySelector('.main-menu-container');
+              if (menuContainer) {
+                menuContainer.style.display = 'block';
+                menuContainer.style.visibility = 'visible';
+                menuContainer.style.opacity = '1';
+              }
+            }, 100);
+          } catch (err) {
+            console.error('Failed to open menu:', err);
+          }
+        }}
+      />
+      
+      <div className={`app-container ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+      {/* FLOATING ACTION MENU - IMPOSSIBLE TO MISS */}
+      <div style={{
+        position: 'fixed',
+        bottom: '30px',
+        right: '30px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        zIndex: 99999
+      }}>
+        <button
+          onClick={() => handleNewTemplate()}
+          style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            backgroundColor: '#34a853',
+            color: 'white',
+            fontSize: '24px',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'pulse 1.5s infinite'
+          }}
+          aria-label="New Project"
+        >
+          +
+        </button>
+        
+        <button
+          onClick={() => setShowProjectDashboard(true)}
+          style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            backgroundColor: '#4a8df6',
+            color: 'white',
+            fontSize: '24px',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          aria-label="Projects"
+        >
+          📂
+        </button>
+      </div>
+      
+      <style jsx>{`
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+      <nav style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        backgroundColor: '#FF5722',
+        color: 'white',
+        padding: '10px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        zIndex: 99999,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+        borderBottom: '3px solid gold'
+      }}>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          {/* MENU BUTTON */}
+          <button 
+            onClick={() => {
+              setMenuOpen(!menuOpen);
+              console.log('Menu clicked!');
+            }}
+            style={{
+              backgroundColor: '#1e1e1e',
+              border: '2px solid gold',
+              borderRadius: '8px',
+              width: '40px',
+              height: '36px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-around',
+              padding: '7px',
+              marginRight: '15px',
+              cursor: 'pointer',
+            }}
+            aria-label="Menu"
+          >
+            <div style={{height: '3px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+            <div style={{height: '3px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+            <div style={{height: '3px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+          </button>
+          <h2 style={{margin: 0, fontSize: '18px'}}>Coder AI Platform</h2>
+        </div>
+        
+        <div style={{display: 'flex', gap: '15px'}}>
+          {/* PROJECTS BUTTON */}
+          <button
+            onClick={() => {
+              setShowProjectDashboard(true);
+              console.log('Projects clicked!');
+            }}
+            style={{
+              backgroundColor: '#4a8df6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span role="img" aria-label="Projects">📂</span> Projects
+          </button>
+          
+          {/* NEW PROJECT BUTTON */}
+          <button
+            onClick={() => {
+              handleNewTemplate();
+              console.log('New Project clicked!');
+            }}
+            style={{
+              backgroundColor: '#34a853',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span role="img" aria-label="New">✨</span> New Project
+          </button>
+        </div>
+      </nav>
+      
+      {/* FLOATING ACTION MENU - UNMISSABLE */}
+      <div className="floating-action-menu">
+        <button 
+          className="floating-action-button new-project" 
+          onClick={() => {
+            handleNewTemplate();
+            console.log('New project button clicked');
+          }}
+          aria-label="Create new project"
+          title="Create new project"
+        >
+          +
+        </button>
+        <button 
+          className="floating-action-button projects" 
+          onClick={() => {
+            setShowProjectDashboard(true);
+            console.log('Projects button clicked');
+          }}
+          aria-label="Show projects"
+          title="Show projects"
+        >
+          📂
+        </button>
+        <button 
+          className="floating-action-button menu" 
+          onClick={() => {
+            // Dispatch custom event to open the menu instead of directly manipulating DOM
+            const event = new CustomEvent('customOpenMainMenu', {
+              detail: { source: 'floating-menu' }
+            });
+            document.dispatchEvent(event);
+            
+            // Fallback method using setMenuOpen if available
+            if (typeof setMenuOpen === 'function') {
+              setMenuOpen(true);
+            }
+            
+            console.log('Menu button clicked - dispatched custom event');
+          }}
+          aria-label="Open menu"
+          title="Open menu"
+        >
+          ≡
+        </button>
+      </div>
+      
+      {/* Authentication overlay */}
+      {!authenticated && authChecked && apiStatus.status !== 'error' && (
+        <Login 
+          onLoginSuccess={handleLogin} 
+          onCancel={null} // Don't allow skipping login
+        />
+      )}
+      
+      {/* Language selector modal */}
+      {showLanguageSelector && (
+        <LanguageSelectorModal
+          onSelect={handleLanguageSelected}
+          onCancel={handleCancelLanguageSelection}
+        />
+      )}
+      
+      {/* Template selector modal */}
+      {showTemplateSelector && (
+        <TemplateSelector 
+          apiUrl="http://localhost:8000"
+          onProjectCreate={handleProjectCreated}
+          onClose={() => setShowTemplateSelector(false)}
+        />
+      )}
+      
+      {showSystemHealth && (
+        <SystemHealth 
+          apiStatus={apiStatus} 
+          onClose={() => setShowSystemHealth(false)} 
+        />
+      )}
+      
+      {/* User Profile Panel */}
+      <UserProfilePanel
+        isOpen={showUserProfile}
+        onClose={() => setShowUserProfile(false)}
+        username={username}
+        isAdmin={isAdmin}
+        apiStatus={apiStatus}
+        updateUserPreferences={updateUserPreferences}
+        userPreferences={userPreferences}
+      />
+      
+      {/* Project Dashboard */}
+      <ProjectDashboard
+        isOpen={showProjectDashboard}
+        onClose={() => setShowProjectDashboard(false)}
+        onProjectSelect={(project) => {
+          if (project && project.mainFile) {
+            handleLoad(project.mainFile);
+          }
+        }}
+        onProjectCreate={handleNewTemplate}
+        authenticated={authenticated}
+        username={username}
+        apiStatus={apiStatus}
+      />
+      
+      {/* NEW ULTRA-VISIBLE NAVIGATION BAR */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        backgroundColor: '#FF5722',
+        color: 'white',
+        padding: '10px 15px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        zIndex: 99999,
+        borderBottom: '3px solid gold'
+      }}>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          {/* Ultra-visible hamburger menu */}
+          <div style={{
+            width: '40px',
+            height: '40px',
+            backgroundColor: '#1e1e1e',
+            borderRadius: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-around',
+            padding: '8px',
+            marginRight: '15px',
+            cursor: 'pointer',
+            border: '2px solid gold',
+            boxShadow: '0 0 10px rgba(255,215,0,0.5)'
+          }} onClick={() => setMenuOpen(!menuOpen)}>
+            <div style={{height: '4px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+            <div style={{height: '4px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+            <div style={{height: '4px', backgroundColor: 'white', borderRadius: '2px'}}></div>
+      <div className="app-header" style={{position: 'relative', zIndex: 9100}}>
+        <div className="app-header-left">
+          {/* Make MainMenu extremely visible */}
+          <div style={{position: 'relative', zIndex: 9500, display: 'block !important'}}>
+            <MainMenu 
+              authenticated={authenticated}
+              username={username}
+              isAdmin={isAdmin}
+              onLogout={handleLogout}
+              onNewFile={handleNewFile}
+              onNewProject={handleNewTemplate}
+              onSave={handleSave}
+              onSaveAs={handleSaveAs}
+              onToggleSystemHealth={() => setShowSystemHealth(!showSystemHealth)}
+              onToggleAgentConsensus={() => setShowAgentConsensus(!showAgentConsensus)}
+              isSystemHealthVisible={showSystemHealth}
+              isAgentConsensusVisible={showAgentConsensus}
+              apiStatus={apiStatus}
+              onToggleDarkMode={toggleDarkMode}
+              isDarkMode={isDarkMode}
+              onToggleUserProfile={toggleUserProfile}
+              onToggleProjectDashboard={toggleProjectDashboard}
+            />
+          </div>
+          
+          <h1>Coder AI Platform</h1>
+          
+          {/* Ensure these buttons are absolutely visible */}
+          <button 
+            className="project-dashboard-button"
+            onClick={toggleProjectDashboard}
+            style={{
+              display: 'flex !important',
+              visibility: 'visible !important',
+              opacity: '1 !important',
+              margin: '0 10px',
+              position: 'relative',
+              zIndex: 9200
+            }}
+          >
+            <span className="button-icon">📂</span>
+            <span className="button-text">Projects</span>
+          </button>
+          
+          <button 
+            className="new-project-button"
+            onClick={handleNewTemplate}
+            style={{
+              display: 'flex !important',
+              visibility: 'visible !important',
+              opacity: '1 !important',
+              margin: '0 10px',
+              position: 'relative',
+              zIndex: 9200
+            }}
+          >
+            <span className="button-icon">✨</span>
+            <span className="button-text">New Project</span>
+          </button>
+        </div>
+        <div className="user-controls">
+          {currentFile && <div className="current-file">{currentFile}</div>}
+          {/* Test buttons for toggling panels */}
+          <button 
+            className="test-btn" 
+            onClick={toggleProjectDashboard}
+            style={{
+              marginRight: '10px',
+              padding: '5px 10px',
+              background: '#4a8df6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px'
+            }}
+          >
+            Projects
+          </button>
+          <button 
+            className="test-btn" 
+            onClick={toggleUserProfile}
+            style={{
+              marginRight: '10px',
+              padding: '5px 10px',
+              background: '#34a853',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px'
+            }}
+          >
+            Profile
+          </button>
+          {!authenticated && apiStatus.status !== 'error' && authChecked && (
+            <button className="login-btn" onClick={() => setShowLogin(true)}>Login</button>
+          )}
+        </div>
+      </div>
+      
+      {showSystemHealth && (
+        <SystemHealth apiUrl="http://localhost:8000" />
+      )}
+      
+      {showAgentConsensus && (
+        <div className="agent-consensus-container">
+          <AgentConsensusPanel 
+            api={getAgentConsensusApi({
+              baseUrl: '/api',
+              onError: (error) => {
+                console.error('Agent API error:', error);
+                setOutput(`Multi-agent system error: ${error.message}. Fallback mechanism activated.`);
+              },
+              onOffline: (queueLength) => {
+                setOutput(`Multi-agent system is offline. ${queueLength} tasks queued for processing when back online.`);
+              },
+              fallbackSettings: {
+                cacheResults: true,
+                useOfflineQueue: true,
+                retryFailedCalls: true,
+                maxRetries: 3,
+                useLocalFallbacks: true
+              }
+            })}
+          />
+        </div>
+      )}
+      
+      <div className="app-main">
+        {/* Outer panel group for main layout */}
+        <PanelGroup direction="horizontal" className="panel-group-main">
+          {/* Sidebar panel */}
+          <Panel defaultSize={20} minSize={15} className="sidebar-panel">
+            <div className="sidebar">
+              <FileBrowser 
+                files={files} 
+                onLoad={handleLoad} 
+                onSave={saveFile}
+                currentFile={currentFile}
+              />
+            </div>
+          </Panel>
+          
+          {/* Resize handle between sidebar and main content */}
+          <PanelResizeHandle className="resize-handle resize-handle-vertical" />
+          
+          {/* Main content panel group */}
+          <Panel className="main-panel">
+            <PanelGroup direction="horizontal" className="panel-group-content">
+              {/* Editor panel */}
+              <Panel defaultSize={60} minSize={30} className="editor-panel">
+                <div className="editor-section">
+                  <CodeEditor 
+                    code={code} 
+                    onChange={setCode} 
+                    language={language}
+                    onSave={handleSave}
+                  />
+                </div>
+              </Panel>
+              
+              {/* Resize handle between editor and output/chat */}
+              <PanelResizeHandle className="resize-handle resize-handle-vertical" />
+              
+              {/* Output/Chat panel group */}
+              <Panel className="output-panel">
+                <PanelGroup direction="vertical" className="panel-group-output">
+                  {/* Terminal output panel */}
+                  <Panel defaultSize={50} minSize={20} className="terminal-panel">
+                    <Terminal output={output} />
+                  </Panel>
+                  
+                  {/* Resize handle between terminal and chat */}
+                  <PanelResizeHandle className="resize-handle resize-handle-horizontal" />
+                  
+                  {/* Chat panel */}
+                  <Panel className="chat-panel">
+                    <ChatPanel codeIntegration={codeIntegration} />
+                  </Panel>
+                </PanelGroup>
+              </Panel>
+            </PanelGroup>
+          </Panel>
+        </PanelGroup>
+      </div>
+    </div>
+    </>
+  );
+}

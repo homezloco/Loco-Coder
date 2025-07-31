@@ -1,0 +1,136 @@
+.system-health {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin: 10px 0;
+  background-color: #f8f9fa;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.health-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.health-summary:hover {
+  background-color: #eee;
+}
+
+.health-indicator {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.last-checked {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.expand-icon {
+  font-size: 0.8rem;
+}
+
+.health-details {
+  padding: 0 15px 15px 15px;
+  border-top: 1px solid #eee;
+  animation: fadeIn 0.3s ease;
+}
+
+.service-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.service {
+  padding: 12px;
+  border-radius: 6px;
+  background-color: #fff;
+  border: 1px solid #eee;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.service-header {
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.service-message {
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.service-fallback {
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  background-color: #fff9db;
+  border-left: 3px solid #ffab00;
+  color: #664d03;
+  border-radius: 3px;
+}
+
+.health-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 15px;
+}
+
+.refresh-btn {
+  background-color: #f1f3f5;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background-color: #e9ecef;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+  .service-status {
+    grid-template-columns: 1fr;
+  }
+  
+  .health-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .last-checked {
+    margin-top: 5px;
+  }
+  
+  .expand-icon {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+  }
+}

@@ -1,0 +1,1551 @@
+import React, { useEffect } from 'react';
+import Dashboard from './ProjectDashboard/Dashboard';
+import '../styles/ProjectDashboard.css';
+import '../styles/ProjectConfirmation.css';
+
+/**
+ * ProjectDashboard Component
+ * 
+ * This is a wrapper around the new modular Dashboard component
+ * to maintain backward compatibility with existing code.
+ * 
+ * @param {Object} props - Component props
+ * @returns {React.Component}
+ */
+const ProjectDashboard = (props) => {
+  // Ensure styles are applied for visibility
+  useEffect(() => {
+    const projectDashboardStyle = document.createElement('style');
+    projectDashboardStyle.textContent = `
+      .project-dashboard {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(projectDashboardStyle);
+    
+    return () => {
+      if (document.head.contains(projectDashboardStyle)) {
+        document.head.removeChild(projectDashboardStyle);
+      }
+    };
+  }, []);
+  
+  // Simply pass all props to the new Dashboard component
+  return <Dashboard {...props} />;
+};
+
+export default ProjectDashboard;
+
+    backdrop-filter: blur(5px);
+  }
+  
+  .project-dashboard {
+    width: 90% !important;
+    max-width: 1200px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5) !important;
+    position: relative !important;
+    display: block !important;
+  }
+  
+  .project-dashboard-header {
+    position: sticky !important;
+    top: 0 !important;
+    background: inherit !important;
+    z-index: 10 !important;
+    padding: 10px 0 !important;
+  }
+  
+  .project-dashboard-scrollable {
+    max-height: calc(90vh - 140px) !important;
+    overflow-y: auto !important;
+    padding-right: 10px !important;
+  }
+`;
+document.head.appendChild(projectDashboardStyle);
+
+/**
+ * ProjectDashboard component - Clean project management interface similar to Replit
+ * Features:
+ * - Project organization and filtering
+ * - Project cards with quick actions
+ * - Offline support with local fallback
+ * - Search and filter capabilities
+ * - Responsive grid layout
+ * - Fixed positioning with scrollable content
+ * - Prevents opening blank windows
+ * - Robust error handling for API status
+ */
+const ProjectDashboard = ({
+  isOpen = false,
+  onClose = () => console.log('No onClose handler provided'),
+  onProjectSelect = () => console.log('No onProjectSelect handler provided'),
+  onProjectCreate = () => console.log('No onProjectCreate handler provided'),
+  authenticated = false,
+  username = 'guest',
+  apiStatus = { status: 'unknown', message: 'Status not provided' } // Default value to prevent null errors
+}) => {
+  // Only log when isOpen changes to reduce console noise
+  useEffect(() => {
+    if (isOpen) {
+      console.log('ProjectDashboard opened:', { authenticated, username, apiStatus });
+    }
+  }, [isOpen]);
+  // Prevent default actions that might cause new window openings
+  useEffect(() => {
+    const preventDefaultActions = (e) => {
+      if (isOpen && e.target.closest('.project-dashboard-container')) {
+        // Only prevent defaults within the dashboard
+        e.preventDefault();
+      }
+    };
+    
+    // Add global click handler to prevent unwanted behavior
+    document.addEventListener('click', preventDefaultActions, true);
+    
+    return () => {
+      document.removeEventListener('click', preventDefaultActions, true);
+    };
+  }, [isOpen]);
+  // State
+  const [error, setError] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState({ status: 'synced', lastSync: new Date() });
+  
+  // Local fallback for projects when API is offline
+  const localStorageKey = `user_projects_${username || 'guest'}`;
+  const dashboardRef = useRef(null);
+  const cardsContainerRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const firstCardRef = useRef(null);
+  const lastCardRef = useRef(null);
+
+  // Debug visibility - log dashboard state whenever relevant properties change
+  useEffect(() => {
+    if (isOpen) {
+      console.log('ProjectDashboard visibility debug:', { 
+        isOpen, 
+        projectCount: projects?.length || 0,
+        isLoading,
+        error,
+        dashboardElement: document.querySelector('.project-dashboard'),
+        containerElement: document.querySelector('.project-dashboard-container'),
+        dashboardStyle: document.querySelector('.project-dashboard')?.style,
+        containerStyle: document.querySelector('.project-dashboard-container')?.style,
+        visibilityInjected: !!document.getElementById('project-dashboard-injected-style')
+      });
+      
+      // Force repaint to ensure visibility
+      setTimeout(() => {
+        const dashboard = document.querySelector('.project-dashboard');
+        if (dashboard) {
+          dashboard.style.opacity = '0.99';
+          setTimeout(() => {
+            dashboard.style.opacity = '1';
+          }, 10);
+        }
+      }, 100);
+    }
+  }, [isOpen, projects, isLoading, error]);
+  
+  // Accessibility: Focus trap and keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    // Focus management - focus trap implementation
+    const handleTabKey = (e) => {
+      if (e.key !== 'Tab') return;
+      
+      // Query all focusable elements within the dashboard
+      const focusableElements = dashboardRef.current?.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      
+      if (!focusableElements || focusableElements.length === 0) return;
+      
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      
+      // Create a focus trap
+      if (e.shiftKey) { // Shift+Tab - backwards
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else { // Tab - forwards
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+    
+    // Set initial focus to the close button for accessibility
+    setTimeout(() => {
+      const closeButton = dashboardRef.current?.querySelector('.close-button');
+      if (closeButton) {
+        closeButton.focus();
+      }
+    }, 100);
+    
+    // Attach keydown event listener for focus trap
+    const dashboard = dashboardRef.current;
+    if (dashboard) {
+      dashboard.addEventListener('keydown', handleTabKey);
+    }
+    
+    return () => {
+      if (dashboard) {
+        dashboard.removeEventListener('keydown', handleTabKey);
+      }
+    };
+  }, [isOpen]);
+  
+  // Fetch projects with robust fallback mechanisms
+  useEffect(() => {
+    console.log('Fetching projects with status:', apiStatus?.status || 'undefined');
+    const fetchProjects = async () => {
+      setIsLoading(true);
+      let fetchedProjects = [];
+      const errorMessages = [];
+      
+      try {
+        // Safe check if apiStatus exists and has a status property
+        const apiIsHealthy = apiStatus && (apiStatus.status === 'online' || apiStatus.status === 'degraded');
+        
+        // Try to fetch from API first if it's healthy
+        if (apiIsHealthy) {
+          try {
+            // Primary API call attempt
+            // const response = await api.getProjects();
+            // setProjects(response.data);
+            
+            // Simulating API call for now
+            console.log('Attempting to fetch projects from API...');
+            // Uncomment below when API is ready
+            // const apiProjects = await fetchProjectsFromAPI();
+            // if (apiProjects && apiProjects.length > 0) {
+            //   fetchedProjects = apiProjects;
+            //   errorMessages.push('Successfully fetched projects from API');
+            // }
+          } catch (apiError) {
+            console.error('API fetch error:', apiError);
+            errorMessages.push(`API error: ${apiError.message || 'Unknown error'}`);
+          }
+          
+          // If API returned no projects, continue to next fallback
+          if (fetchedProjects.length === 0) {
+            console.log('No projects returned from API, moving to next fallback');
+          }
+        } else {
+          console.log('API not connected, skipping API fetch attempt');
+          errorMessages.push('API not connected');
+        }
+        
+        // FALLBACK LAYER 2: Try IndexedDB if API fetch failed or returned no results
+        if (fetchedProjects.length === 0) {
+          try {
+            console.log('Attempting to fetch projects from IndexedDB');
+            if ('indexedDB' in window) {
+              // IndexedDB code would go here
+              // For now, just log the attempt
+              console.log('IndexedDB available, would fetch projects here');
+              // If successful, would set fetchedProjects = indexedDbResults;
+            } else {
+              throw new Error('IndexedDB not available');
+            }
+          } catch (dbError) {
+            errorMessages.push(`IndexedDB error: ${dbError.message || 'Unknown DB error'}`);
+            console.warn('Failed to load projects from IndexedDB:', dbError);
+          }
+        }
+        
+        // FALLBACK LAYER 3: Try localStorage if still no projects
+        if (fetchedProjects.length === 0) {
+          try {
+            console.log('Attempting to fetch projects from localStorage');
+            const storedProjects = localStorage.getItem('projects');
+            if (storedProjects) {
+              fetchedProjects = JSON.parse(storedProjects);
+              console.log(`Found ${fetchedProjects.length} projects in localStorage`);
+            }
+          } catch (storageError) {
+            errorMessages.push(`LocalStorage error: ${storageError.message || 'Unknown storage error'}`);
+            console.warn('Failed to load projects from localStorage:', storageError);
+          }
+        }
+        
+        // FALLBACK LAYER 4: Try sessionStorage if still no projects
+        if (fetchedProjects.length === 0) {
+          try {
+            console.log('Attempting to fetch projects from sessionStorage');
+            const sessionProjects = sessionStorage.getItem('projects');
+            if (sessionProjects) {
+              fetchedProjects = JSON.parse(sessionProjects);
+              console.log(`Found ${fetchedProjects.length} projects in sessionStorage`);
+            }
+          } catch (sessionError) {
+            errorMessages.push(`SessionStorage error: ${sessionError.message || 'Unknown session error'}`);
+            console.warn('Failed to load projects from sessionStorage:', sessionError);
+          }
+        }
+        
+        // FALLBACK LAYER 5: Use demo projects as final fallback
+        if (fetchedProjects.length === 0) {
+          console.log('No projects found in any source, using demo projects');
+          fetchedProjects = loadDemoProjects();
+          // If we had to use demo projects, display a user-friendly message
+          if (errorMessages.length > 0) {
+            setError('Using sample projects. Could not connect to your project storage.');
+          }
+        }
+        
+        // Ensure we have valid project data by validating the structure
+        const validProjects = fetchedProjects.filter(project => {
+          return project && project.id && project.name; // Basic validation
+        });
+        
+        if (validProjects.length < fetchedProjects.length) {
+          console.warn(`Filtered out ${fetchedProjects.length - validProjects.length} invalid projects`);
+        }
+        
+        setProjects(validProjects);
+        
+        // Store the fetched projects in all available storage mechanisms for better offline experience
+        try {
+          localStorage.setItem('projects', JSON.stringify(validProjects));
+          sessionStorage.setItem('projects', JSON.stringify(validProjects));
+        } catch (saveError) {
+          console.warn('Failed to save projects to storage:', saveError);
+        }
+        
+      } catch (error) {
+        console.error('Critical error fetching projects:', error);
+        setError('Unable to load your projects. Please try again.');
+        
+        // Ultimate fallback: load demo projects even on critical error
+        setProjects(loadDemoProjects());
+      } finally {
+        setIsLoading(false);
+        // Update last fetch timestamp
+        setSyncStatus(prev => ({ ...prev, lastSync: new Date() }));
+      }
+    };
+    
+    if (isOpen) {
+      fetchProjects();
+    }
+  }, [isOpen, apiStatus?.status, username]);
+
+  // Load projects when dashboard opens
+  useEffect(() => {
+    if (isOpen) {
+      console.log('Dashboard opened, checking for projects...');
+      if (!projects.length && !isLoading) {
+        console.log('No projects loaded, fetching projects...');
+        fetchProjects();
+      } else {
+        console.log('Projects already loaded:', projects.length);
+      }
+      
+      // Force load demo projects immediately if no projects
+      const timer = setTimeout(() => {
+        if (projects.length === 0) {
+          console.log('No projects loaded after delay, forcing demo projects...');
+          const demoProjects = loadDemoProjects();
+          setProjects(demoProjects);
+          setIsLoading(false);
+          console.log('Demo projects loaded:', demoProjects);
+          
+          // Also save to localStorage for persistence
+          try {
+            localStorage.setItem('projects', JSON.stringify(demoProjects));
+          } catch (err) {
+            console.warn('Failed to save demo projects to localStorage:', err);
+          }
+        }
+      }, 100); // Reduced timeout for faster loading
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, projects.length, isLoading]);
+
+  // Function to load demo projects (would be replaced with actual API call)
+  const loadDemoProjects = () => {
+    console.log('Loading demo projects as fallback');
+    const baseProjects = [
+      {
+        id: 'demo-1',
+        name: 'FastAPI Backend Service',
+        description: 'Python backend API with database integration and authentication',
+        language: 'python',
+        lastModified: new Date(Date.now() - 3600000).toISOString(),
+        favorite: true,
+        tags: ['python', 'backend', 'fastapi'],
+        files: 18,
+        collaborators: [],
+        type: 'backend'
+      },
+      {
+        id: 'demo-2',
+        name: 'React Native Mobile App',
+        description: 'Cross-platform mobile frontend with React Native',
+        language: 'javascript',
+        lastModified: new Date(Date.now() - 7200000).toISOString(),
+        favorite: true,
+        tags: ['javascript', 'frontend', 'react-native'],
+        files: 24,
+        collaborators: [],
+        type: 'frontend'
+      },
+      {
+        id: 'demo-3',
+        name: 'Full-Stack Project',
+        description: 'Python FastAPI backend with React Native frontend',
+        language: 'javascript',
+        lastModified: new Date(Date.now() - 86400000).toISOString(),
+        favorite: false,
+        tags: ['fullstack', 'python', 'react-native'],
+        files: 42,
+        collaborators: [],
+        type: 'fullstack'
+      },
+      {
+        id: 'demo-4',
+        name: 'Authentication Module',
+        description: 'Secure authentication system with multiple fallbacks',
+        language: 'python',
+        lastModified: new Date(Date.now() - 172800000).toISOString(),
+        favorite: false,
+        tags: ['security', 'python', 'auth'],
+        files: 12,
+        collaborators: [],
+        type: 'module'
+      }
+    ];
+    
+    // Add more dynamic properties based on username
+    if (username) {
+      return baseProjects.map(project => ({
+        ...project,
+        owner: username,
+        path: `/projects/${username}/${project.name.toLowerCase().replace(/\s+/g, '-')}`,
+        mainFile: project.language === 'python' ? 'main.py' : 'index.js'
+      }));
+    }
+    
+    return baseProjects;
+  };
+
+  // Filter projects based on search query and active filter
+  const filteredProjects = projects.filter(project => {
+    // Search filter
+    const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          project.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Category filter
+    let matchesFilter = true;
+    if (activeFilter === 'favorites') {
+      matchesFilter = project.favorite;
+    } else if (activeFilter === 'recent') {
+      // Show projects edited in the last 7 days
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      matchesFilter = new Date(project.lastEdited) >= sevenDaysAgo;
+    } else if (activeFilter !== 'all') {
+      matchesFilter = project.type === activeFilter;
+    }
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  // State for delete confirmation modal
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    isOpen: false,
+    projectId: null,
+    projectName: ''
+  });
+  
+  // Dark mode state
+  const [isDarkMode, setIsDarkMode] = useState(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  
+  // Listen for changes to color scheme preference
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e) => setIsDarkMode(e.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  // Function to toggle favorite status
+  const toggleFavorite = (projectId) => {
+    const updatedProjects = projects.map(project => 
+      project.id === projectId ? { ...project, favorite: !project.favorite } : project
+    );
+    setProjects(updatedProjects);
+    
+    // Update local storage for offline fallback
+    localStorage.setItem(localStorageKey, JSON.stringify(updatedProjects));
+    
+    // In a real app, this would also update the server
+    if (apiStatus?.status === 'online') {
+      // API call to update favorite status
+      // await api.updateProject(projectId, { favorite: !project.favorite });
+    } else {
+      // Queue for sync later
+      setSyncStatus({ ...syncStatus, status: 'pending-sync' });
+    }
+  };
+  
+  // Handle project creation
+  const handleCreateProject = (newProject) => {
+    // Add the new project to the list
+    const updatedProjects = [newProject, ...projects];
+    setProjects(updatedProjects);
+    
+    // Update local storage
+    localStorage.setItem(localStorageKey, JSON.stringify(updatedProjects));
+    
+    // In a real app, would sync with server if online
+    if (apiStatus?.status === 'online') {
+      // API sync logic would go here
+      setSyncStatus({ status: 'synced', lastSync: new Date() });
+    } else {
+      setSyncStatus({ status: 'pending-sync', lastSync: new Date() });
+    }
+    
+    // Close modal
+    setIsCreateModalOpen(false);
+  };
+  
+  // Open delete confirmation modal
+  const openDeleteConfirmation = (projectId, projectName) => {
+    setDeleteConfirmation({
+      isOpen: true,
+      projectId,
+      projectName
+    });
+  };
+  
+  // Cancel delete confirmation
+  const cancelDelete = () => {
+    setDeleteConfirmation({
+      isOpen: false,
+      projectId: null,
+      projectName: ''
+    });
+  };
+  
+  // Confirm and execute project deletion
+  const confirmDelete = async () => {
+    const { projectId } = deleteConfirmation;
+    if (!projectId) return;
+    
+    try {
+      // Filter out the deleted project
+      const updatedProjects = projects.filter(project => project.id !== projectId);
+      setProjects(updatedProjects);
+      
+      // Update local storage
+      localStorage.setItem(localStorageKey, JSON.stringify(updatedProjects));
+      
+      // In a real app, would delete from server if online
+      if (apiStatus?.status === 'online') {
+        try {
+          // Primary API call
+          // await api.deleteProject(projectId);
+          console.log(`Project ${projectId} deleted from primary API`);
+        } catch (apiError) {
+          console.warn('Primary API delete failed, trying fallback:', apiError);
+          try {
+            // Fallback API call
+            // await fallbackApi.deleteProject(projectId);
+            console.log(`Project ${projectId} deleted from fallback API`);
+          } catch (fallbackError) {
+            console.error('All API delete attempts failed:', fallbackError);
+            // Mark for sync later when back online
+            setSyncStatus({ status: 'pending-sync', lastSync: new Date() });
+          }
+        }
+      } else {
+        // Offline - mark for sync later
+        setSyncStatus({ status: 'pending-sync', lastSync: new Date() });
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    } finally {
+      // Close the confirmation modal
+      cancelDelete();
+    }
+  };
+
+  // Function to handle project selection
+  const handleProjectSelect = (project) => {
+    setSelectedProject(project);
+    if (onProjectSelect) {
+      onProjectSelect(project);
+      onClose();
+    }
+  };
+
+  // Format date to readable string
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Render project language icon
+  const renderLanguageIcon = (language) => {
+    switch (language?.toLowerCase()) {
+      case 'javascript':
+      case 'js':
+        return '🌕'; // Moon emoji
+      case 'typescript':
+      case 'ts':
+        return '🔲'; // Black square button
+      case 'python':
+        return '🐍'; // Snake emoji
+      case 'java':
+        return '☕'; // Coffee emoji
+      case 'go':
+        return '🚀'; // Rocket emoji
+      case 'rust':
+        return '🖥'; // Desktop computer emoji
+      case 'c++':
+      case 'cpp':
+        return '⚡'; // Lightning emoji
+      case 'c#':
+      case 'csharp':
+        return '🎵'; // 🎵
+      default:
+        return '📄'; // 📄
+    }
+  };
+
+  // Save dashboard state to localStorage when open status changes
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        localStorage.setItem('projectDashboardVisible', 'true');
+        console.log('Saved dashboard open state to localStorage');
+      } catch (err) {
+        console.warn('Failed to save dashboard open state:', err);
+      }
+    }
+  }, [isOpen]);
+  
+  // Multiple redundant visibility methods to ensure dashboard can be opened
+  useEffect(() => {
+    // Method 1: Direct prop-based visibility
+    if (isOpen) {
+      console.log('ProjectDashboard opened via isOpen prop');
+    }
+    
+    // Method 2: If projects exist but none selected, auto-show dashboard
+    if (projects.length > 0 && !selectedProject) {
+      console.log('Auto-showing project dashboard - projects exist but none selected');
+    }
+    
+    // Method 3: Listen for custom force-open events
+    const handleForceOpen = () => {
+      console.log('Received force open event for project dashboard');
+      // Apply direct DOM manipulation as fallback
+      const dashboardElement = dashboardRef.current;
+      if (dashboardElement) {
+        dashboardElement.style.right = '0';
+        dashboardElement.style.display = 'flex';
+        dashboardElement.style.opacity = '1';
+        dashboardElement.classList.add('open');
+      }
+    };
+    
+    // Subscribe to the custom event
+    document.addEventListener('forceProjectDashboardOpen', handleForceOpen);
+    
+    // Add keyboard shortcuts for the dashboard
+    const handleKeyboard = (e) => {
+      if (isOpen) {
+        // Escape key to close the dashboard
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+          console.log('Dashboard closed via Escape key');
+        }
+        
+        // Ctrl+N to create new project when dashboard is open
+        if (e.ctrlKey && e.key === 'n') {
+          e.preventDefault();
+          setIsCreateModalOpen(true);
+          console.log('Opening create project modal via Ctrl+N');
+        }
+        
+        // Search shortcut (Ctrl+F) to focus the search box
+        if (e.ctrlKey && e.key === 'f') {
+          e.preventDefault();
+          const searchInput = document.querySelector('.search-input');
+          if (searchInput) {
+            searchInput.focus();
+            console.log('Search box focused via Ctrl+F');
+          }
+        }
+        
+        // Arrow keys for navigating projects
+        if (e.key.startsWith('Arrow') && filteredProjects.length > 0) {
+          const focusedElement = document.activeElement;
+          const cards = Array.from(document.querySelectorAll('.project-card'));
+          const currentIndex = cards.indexOf(focusedElement);
+          
+          if (currentIndex >= 0 || e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            let nextIndex;
+            
+            switch (e.key) {
+              case 'ArrowRight':
+                nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cards.length;
+                break;
+              case 'ArrowLeft':
+                nextIndex = currentIndex < 0 ? cards.length - 1 : (currentIndex - 1 + cards.length) % cards.length;
+                break;
+              case 'ArrowDown': {
+                const cols = Math.floor(document.querySelector('.project-cards')?.offsetWidth / 300) || 3;
+                nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + cols, cards.length - 1);
+                break;
+              }
+              case 'ArrowUp': {
+                const cols = Math.floor(document.querySelector('.project-cards')?.offsetWidth / 300) || 3;
+                nextIndex = currentIndex < 0 ? cards.length - 1 : Math.max(currentIndex - cols, 0);
+                break;
+              }
+              default:
+                return;
+            }
+            
+            if (cards[nextIndex]) {
+              cards[nextIndex].focus();
+              cards[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyboard);
+    
+    // Method 4: Local storage fallback
+    const storedVisibility = localStorage.getItem('projectDashboardVisible');
+    if (storedVisibility === 'true') {
+      console.log('Restoring project dashboard visibility from localStorage');
+      // Use timeout to ensure this happens after render
+      setTimeout(() => {
+        const dashboardElement = dashboardRef.current;
+        if (dashboardElement) {
+          dashboardElement.classList.add('open');
+        }
+      }, 100);
+    }
+    
+    return () => {
+      document.removeEventListener('forceProjectDashboardOpen', handleForceOpen);
+      document.removeEventListener('keydown', handleKeyboard);
+    };
+  }, [isOpen, projects, selectedProject, onClose, filteredProjects.length]);
+
+  // Manage body scrolling and ensure modal is properly positioned
+  useEffect(() => {
+    if (isOpen) {
+      // Allow scrolling within the modal but prevent body scrolling
+      document.body.style.overflow = 'hidden';
+      
+      // Ensure the dashboard is visible by forcing styles
+      setTimeout(() => {
+        const dashboardContainer = document.querySelector('.project-dashboard-container');
+        if (dashboardContainer) {
+          // Force visibility with !important flags
+          dashboardContainer.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 9999999 !important;
+            background-color: rgba(0, 0, 0, 0.8) !important;
+          `;
+          
+          // Also ensure the inner dashboard content is properly positioned
+          const dashboardContent = dashboardContainer.querySelector('.project-dashboard');
+          if (dashboardContent) {
+            dashboardContent.style.cssText = `
+              position: relative !important;
+              right: auto !important;
+              top: auto !important;
+              transform: none !important;
+              opacity: 1 !important;
+              display: block !important;
+              max-height: 90vh !important;
+              width: 90% !important;
+              max-width: 1200px !important;
+            `;
+          }
+          
+          // Ensure no new windows are opened
+          const preventWindowOpen = (e) => {
+            e.preventDefault();
+            return false;
+          };
+          
+          // Add event listeners to prevent new window opening
+          const allLinks = dashboardContainer.querySelectorAll('a');
+          allLinks.forEach(link => {
+            link.addEventListener('click', preventWindowOpen);
+          });
+          
+          // Focus first focusable element to improve accessibility
+          const focusableElement = dashboardContainer.querySelector('button, input, [tabindex="0"]');
+          if (focusableElement) {
+            focusableElement.focus();
+          }
+          
+          console.log('ProjectDashboard visibility forced with inline styles');
+        } else {
+          console.error('Could not find project-dashboard-container element');
+        }
+      }, 10);
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
+  // Don't render anything if not open
+  if (!isOpen) return null;
+  
+  // Prevent click propagation
+  const handleContainerClick = (e) => {
+    if (e.target === e.currentTarget) {
+      e.preventDefault();
+      onClose();
+    }
+  };
+  
+  // Prevent links from opening in new window
+  const preventNewWindow = (e) => {
+    e.preventDefault();
+    return false;
+  };
+
+  // Visibility enforcement with direct DOM manipulation and fallback rendering
+  useEffect(() => {
+    if (isOpen) {
+      console.log('Dashboard opened, enforcing visibility with direct DOM manipulation');
+      
+      // Prevent body scrolling
+      document.body.style.overflow = 'hidden';
+      
+      // Create style element for guaranteed visibility
+      const styleId = 'guaranteed-dashboard-styles';
+      let styleEl = document.getElementById(styleId);
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      
+      // Set CSS with important flags
+      styleEl.textContent = `
+        .project-dashboard-container {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          display: flex !important;
+          justify-content: center !important;
+          align-items: center !important;
+          background-color: rgba(0, 0, 0, 0.75) !important;
+          z-index: 2147483647 !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+        
+        .project-dashboard {
+          width: 90% !important;
+          max-width: 1200px !important;
+          max-height: 90vh !important;
+          background-color: #ffffff !important;
+          border-radius: 8px !important;
+          box-shadow: 0 0 30px rgba(0, 0, 0, 0.5) !important;
+          padding: 20px !important;
+          overflow-y: auto !important;
+          position: relative !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          display: block !important;
+        }
+        
+        .project-card {
+          visibility: visible !important;
+          opacity: 1 !important;
+          display: block !important;
+        }
+        
+        /* Ensure close button visibility */
+        .dashboard-close-button {
+          position: absolute !important;
+          top: 10px !important;
+          right: 10px !important;
+          background-color: #f44336 !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 50% !important;
+          width: 30px !important;
+          height: 30px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          cursor: pointer !important;
+          font-size: 18px !important;
+          font-weight: bold !important;
+          z-index: 2147483647 !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+      `;
+      
+      // FALLBACK RENDERING MECHANISM
+      // If React fails to render properly, create direct DOM elements as fallback
+      const ensureDashboardExists = () => {
+        if (!document.querySelector('.project-dashboard-container')) {
+          console.log('FALLBACK: Creating dashboard container directly in DOM');
+          const fallbackContainer = document.createElement('div');
+          fallbackContainer.className = 'project-dashboard-container fallback';
+          fallbackContainer.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.75);
+            z-index: 2147483647;
+          `;
+          
+          const fallbackDashboard = document.createElement('div');
+          fallbackDashboard.className = 'project-dashboard fallback';
+          fallbackDashboard.style.cssText = `
+            width: 90%;
+            max-width: 1200px;
+            max-height: 90vh;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            overflow-y: auto;
+            position: relative;
+          `;
+          
+          // Add a header
+          const header = document.createElement('h2');
+          header.textContent = 'Project Dashboard (Fallback Mode)';
+          
+          // Add close button
+          const closeButton = document.createElement('button');
+          closeButton.className = 'dashboard-close-button';
+          closeButton.innerHTML = '&times;';
+          closeButton.onclick = () => onClose();
+          
+          fallbackDashboard.appendChild(header);
+          fallbackDashboard.appendChild(closeButton);
+          fallbackContainer.appendChild(fallbackDashboard);
+          document.body.appendChild(fallbackContainer);
+        }
+      };
+      
+      // Add direct DOM manipulation for maximum guarantee
+      const forceDashboardVisibility = () => {
+        try {
+          const container = document.querySelector('.project-dashboard-container');
+          const dashboard = document.querySelector('.project-dashboard');
+          
+          if (container) {
+            // Force container visibility
+            container.style.setProperty('visibility', 'visible', 'important');
+            container.style.setProperty('opacity', '1', 'important');
+            container.style.setProperty('display', 'flex', 'important');
+            container.style.setProperty('z-index', '2147483647', 'important');
+            container.style.setProperty('position', 'fixed', 'important');
+          } else {
+            // If container doesn't exist, create it as a fallback
+            ensureDashboardExists();
+          }
+          
+          if (dashboard) {
+            // Force dashboard visibility
+            dashboard.style.setProperty('visibility', 'visible', 'important');
+            dashboard.style.setProperty('opacity', '1', 'important');
+            dashboard.style.setProperty('display', 'block', 'important');
+          }
+          
+          // Force all cards to be visible
+          const cards = document.querySelectorAll('.project-card');
+          cards.forEach(card => {
+            card.style.setProperty('visibility', 'visible', 'important');
+            card.style.setProperty('opacity', '1', 'important');
+            card.style.setProperty('display', 'block', 'important');
+          });
+          
+          // Ensure close button is visible
+          const closeBtn = document.querySelector('.dashboard-close-button');
+          if (closeBtn) {
+            closeBtn.style.setProperty('visibility', 'visible', 'important');
+            closeBtn.style.setProperty('opacity', '1', 'important');
+            closeBtn.style.setProperty('display', 'flex', 'important');
+            closeBtn.style.setProperty('z-index', '2147483647', 'important');
+          }
+          
+          console.log('Direct DOM visibility enforcement applied');
+        } catch (err) {
+          console.error('Error during visibility enforcement:', err);
+        }
+      };
+      
+      // Run immediately and periodically to guarantee visibility
+      forceDashboardVisibility();
+      const visibilityInterval = setInterval(forceDashboardVisibility, 500);
+      
+      // Return cleanup function
+      return () => {
+        document.body.style.overflow = '';
+        clearInterval(visibilityInterval);
+        
+        // Remove any styles that were added
+        if (document.getElementById(styleId)) {
+          document.getElementById(styleId).remove();
+        }
+        
+        // Remove any fallback elements if they exist
+        const fallbackContainer = document.querySelector('.project-dashboard-container.fallback');
+        if (fallbackContainer) {
+          document.body.removeChild(fallbackContainer);
+        }
+      };
+    } else {
+      // Restore body scrolling when dashboard is closed
+      document.body.style.overflow = 'auto';
+      
+      // Clean up any styles that were added
+      const styleId = 'guaranteed-dashboard-styles';
+      if (document.getElementById(styleId)) {
+        document.getElementById(styleId).remove();
+      }
+      
+      // Remove any fallback elements if they exist
+      const fallbackContainer = document.querySelector('.project-dashboard-container.fallback');
+      if (fallbackContainer) {
+        document.body.removeChild(fallbackContainer);
+      }
+    }
+  }, [isOpen]);
+  
+  // CSS is now properly injected through the style element in useEffect
+  
+  return (
+    <div 
+      className="project-dashboard-container" 
+      onClick={handleContainerClick} 
+      onAuxClick={preventNewWindow}
+      ref={dashboardRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dashboard-title"
+      tabIndex="-1"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 9999999,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'auto',
+        visibility: 'visible',
+        opacity: 1
+      }}
+    >
+      <div className="project-dashboard" style={{
+        width: '90%',
+        maxWidth: '1200px',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        backgroundColor: isDarkMode ? '#1e1e1e' : '#f4f4f4',
+        padding: '20px',
+        borderRadius: '8px',
+        boxShadow: '0 0 20px rgba(0, 0, 0, 0.5)',
+        position: 'relative'
+      }}>
+      <div className="project-dashboard-header" style={{ 
+        position: 'sticky', 
+        top: 0, 
+        zIndex: 10, 
+        padding: '10px 0',
+        backgroundColor: isDarkMode ? '#1e1e1e' : '#f4f4f4',
+        borderBottom: '1px solid #ddd',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <h2 id="dashboard-title" style={{ margin: 0 }}>Projects</h2>
+        <button 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Save closed state to localStorage
+            try {
+              localStorage.setItem('projectDashboardVisible', 'false');
+            } catch (err) {
+              console.warn('Failed to save dashboard visibility state:', err);
+            }
+            // Call the provided onClose handler
+            if (onClose) onClose();
+          }} 
+          className="close-button" 
+          aria-label="Close"
+          style={{
+            background: 'rgba(255, 0, 0, 0.7)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            fontSize: '24px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >×</button>
+      </div>
+      
+      {/* Project Creation Modal */}
+      <ProjectCreationModal 
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreateProject={handleCreateProject}
+        apiStatus={apiStatus}
+      />
+      
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmation.isOpen && (
+        <div className="confirmation-overlay">
+          <div className="confirmation-dialog">
+            <div className="confirmation-header">
+              <h3 className="confirmation-title">
+                <span className="warning-icon">⚠️</span>
+                Delete Project
+              </h3>
+            </div>
+            <div className="confirmation-content">
+              <p>Are you sure you want to delete <span className="project-name">{deleteConfirmation.projectName}</span>?</p>
+              <p>This action cannot be undone.</p>
+            </div>
+            <div className="confirmation-actions">
+              <button className="cancel-button" onClick={cancelDelete}>Cancel</button>
+              <button className="delete-button" onClick={confirmDelete}>Delete Project</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="dashboard-actions" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        margin: '20px 0',
+        flexWrap: 'wrap',
+        gap: '10px'
+      }}>
+        <div className="action-buttons">
+          <button 
+            className="create-project-button" 
+            onClick={() => setIsCreateModalOpen(true)}
+            aria-label="Create a new project"
+          >
+            <span className="button-icon">✨</span>
+            Create New Project
+          </button>
+        </div>
+        <div className="search-container">
+          <input
+            type="text"
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          {searchQuery && (
+            <button 
+              className="clear-search" 
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+      
+      <div className="filter-tabs" style={{
+        display: 'flex',
+        gap: '10px',
+        margin: '15px 0',
+        borderBottom: '1px solid ' + (isDarkMode ? '#444' : '#ddd'),
+        paddingBottom: '10px'
+      }}>
+        <button 
+          className={activeFilter === 'all' ? 'active' : ''} 
+          onClick={() => setActiveFilter('all')}
+          style={{
+            padding: '8px 15px',
+            backgroundColor: activeFilter === 'all' ? (isDarkMode ? '#555' : '#e0e0e0') : 'transparent',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: isDarkMode ? '#fff' : '#333'
+          }}
+        >
+          All
+        </button>
+        <button 
+          className={activeFilter === 'recent' ? 'active' : ''} 
+          onClick={() => setActiveFilter('recent')}
+        >
+          Recent
+        </button>
+        <button 
+          className={activeFilter === 'favorites' ? 'active' : ''} 
+          onClick={() => setActiveFilter('favorites')}
+        >
+          Favorites
+        </button>
+        <button 
+          className={activeFilter === 'frontend' ? 'active' : ''} 
+          onClick={() => setActiveFilter('frontend')}
+        >
+          Frontend
+        </button>
+        <button 
+          className={activeFilter === 'backend' ? 'active' : ''} 
+          onClick={() => setActiveFilter('backend')}
+          style={{
+            padding: '8px 15px',
+            backgroundColor: activeFilter === 'backend' ? (isDarkMode ? '#555' : '#e0e0e0') : 'transparent',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: isDarkMode ? '#fff' : '#333'
+          }}
+        >
+          Backend
+        </button>
+        <button 
+          className={activeFilter === 'frontend' ? 'active' : ''} 
+          onClick={() => setActiveFilter('frontend')}
+          style={{
+            padding: '8px 15px',
+            backgroundColor: activeFilter === 'frontend' ? (isDarkMode ? '#555' : '#e0e0e0') : 'transparent',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: isDarkMode ? '#fff' : '#333'
+          }}
+        >
+          Frontend
+        </button>
+      </div>
+      
+      {/* Project cards with guaranteed visibility */}
+      <div className="projects-grid" style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gap: '20px',
+        marginTop: '20px',
+            height: '50px',
+            border: `4px solid ${isDarkMode ? '#333' : '#eee'}`,
+            borderTop: `4px solid ${isDarkMode ? '#fff' : '#333'}`,
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            marginBottom: '20px'
+          }}></div>
+          <p style={{fontSize: '16px', fontWeight: 'bold'}}>Loading your projects...</p>
+        </div>
+      ) : error ? (
+        <div className="error-message" style={{
+          padding: '20px',
+          backgroundColor: isDarkMode ? '#3a1c1c' : '#ffebee',
+          color: isDarkMode ? '#ff8a80' : '#c62828',
+          borderRadius: '8px',
+          gridColumn: '1 / -1',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <span style={{fontSize: '24px'}}>⚠️</span>
+          <div>
+            <h3 style={{margin: '0 0 5px 0'}}>Error loading projects</h3>
+            <p style={{margin: 0}}>{error}</p>
+          </div>
+          <button 
+            onClick={() => {
+              setError(null);
+              fetchProjects();
+            }}
+            style={{
+              marginTop: '20px',
+              padding: '8px 16px',
+              background: '#3498db',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      ) : (
+        <>
+          {filteredProjects.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📁</div>
+              <h3>No projects found</h3>
+              <p>
+                {searchQuery 
+                  ? `No results match "${searchQuery}"`
+                  : activeFilter !== 'all' 
+                    ? `No projects in the "${activeFilter}" category` 
+                    : "You don't have any projects yet"}
+              </p>
+              <button 
+                className="create-first-button"
+                onClick={() => {
+                  if (onProjectCreate) {
+                    onProjectCreate();
+                    onClose();
+                  } else {
+                    setIsCreateModalOpen(true);
+                  }
+                }}
+              >
+                Create your first project
+              </button>
+            </div>
+          ) : (
+            <div className="project-cards" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '20px',
+              marginTop: '20px',
+              maxHeight: 'calc(90vh - 200px)',
+              overflowY: 'auto',
+              padding: '10px 5px'
+            }} onClick={(e) => e.stopPropagation()}>
+              {filteredProjects.map(project => (
+                <div 
+                  key={project.id} 
+                  className="project-card" 
+                  tabIndex="0"
+                  style={{
+                    backgroundColor: isDarkMode ? '#2a2a2a' : 'white',
+                    borderRadius: '8px',
+                    boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
+                    padding: '18px',
+                    transition: 'all 0.25s ease-out',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    minHeight: '180px',
+                    border: `1px solid ${isDarkMode ? '#3a3a3a' : '#eaeaea'}`,
+                    outline: 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.18)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,0.12)';
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.boxShadow = `0 0 0 3px ${isDarkMode ? '#4a90e2' : '#3498db'}`;
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,0.12)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleProjectSelect(project);
+                    }
+                  }}
+                >
+                  <div className="card-header">
+                    <div className="project-language">
+                      {renderLanguageIcon(project.language)}
+                    </div>
+                    <h3 onClick={() => handleProjectSelect(project)} className="project-title">{project.name}</h3>
+                    <button 
+                      className={`favorite-button ${project.favorite ? 'favorited' : ''}`}
+                      onClick={() => toggleFavorite(project.id)}
+                      aria-label={project.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      {project.favorite ? '★' : '☆'}
+                    </button>
+                  </div>
+                  
+                  <p className="project-description">{project.description}</p>
+                  
+                  <div className="project-meta">
+                    <div className="project-services" style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '5px',
+                      marginTop: '10px'
+                    }}>
+                      {project.services?.slice(0, 2).map((service, idx) => (
+                        <span key={idx} className="service-tag" style={{
+                          backgroundColor: isDarkMode ? '#444' : '#eee',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>{service}</span>
+                      ))}
+                      {project.services?.length > 2 && (
+                        <span className="service-tag more" style={{
+                          backgroundColor: isDarkMode ? '#555' : '#ddd',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>+{project.services.length - 2}</span>
+                      )}
+                    </div>
+                    <div className="last-edited">
+                      {formatDate(project.lastEdited)}
+                    </div>
+                  </div>
+                  
+                  <div className="card-actions">
+                    <button 
+                      className="open-button"
+                      onClick={() => handleProjectSelect(project)}
+                    >
+                      Open
+                    </button>
+                    <div className="secondary-actions">
+                      <button 
+                        className="clone-button" 
+                        title="Clone Project"
+                      >
+                        <span className="action-icon">📋</span> Clone
+                      </button>
+                      <button 
+                        className="delete-button"
+                        onClick={() => openDeleteConfirmation(project.id, project.name)}
+                        title="Delete Project"
+                      >
+                        <span className="action-icon">🗑️</span> Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    
+      <div className="dashboard-footer" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        borderTop: '1px solid #ddd',
+        marginTop: '20px',
+        paddingTop: '15px'
+      }}>
+        <div className="sync-status" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className={`status-indicator ${syncStatus.status}`} style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            backgroundColor: syncStatus.status === 'synced' ? '#4CAF50' : 
+                           syncStatus.status === 'pending-sync' ? '#FFC107' : 
+                           syncStatus.status === 'using-local' ? '#2196F3' : 
+                           syncStatus.status === 'using-demo' ? '#FF9800' : '#F44336'
+          }}></div>
+          <span className="status-text" style={{ fontSize: '13px', color: isDarkMode ? '#ccc' : '#666' }}>
+            {syncStatus.status === 'synced' ? 'All projects synced' : 
+             syncStatus.status === 'pending-sync' ? 'Changes pending sync' :
+             syncStatus.status === 'using-local' ? 'Using offline data' :
+             syncStatus.status === 'using-demo' ? 'Using demo data' :
+             'Error syncing data'}
+          </span>
+          {syncStatus.lastSync && (
+            <span className="last-sync" style={{ fontSize: '12px', color: isDarkMode ? '#aaa' : '#888', marginLeft: '5px' }}>
+              Last synced: {syncStatus.lastSync.toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+        
+        <div className="api-status" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className={`status-indicator ${apiStatus?.status}`} style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            backgroundColor: apiStatus?.status === 'online' ? '#4CAF50' : 
+                           apiStatus?.status === 'degraded' ? '#FFC107' : '#F44336'
+          }}></div>
+          <span className="status-text" style={{ fontSize: '13px', color: isDarkMode ? '#ccc' : '#666' }}>
+            {apiStatus?.status === 'online' ? 'API Connected' : 
+             apiStatus?.status === 'degraded' ? 'Limited Connectivity' : 
+             'API Offline'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProjectDashboard;

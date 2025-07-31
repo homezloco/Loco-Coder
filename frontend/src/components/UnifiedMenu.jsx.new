@@ -1,0 +1,282 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+/**
+ * UnifiedMenu - A responsive navigation menu component with mobile support
+ */
+const UnifiedMenu = ({
+  onShowProjects,
+  onNewProject,
+  onToggleDarkMode,
+  onToggleUserProfile,
+  onToggleChat,
+  onToggleSettings,
+  isDarkMode = false,
+  username = '',
+  isAdmin = false
+}) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
+  
+  const menuRef = useRef(null);
+  const hamburgerRef = useRef(null);
+  const mobileMenuRefs = useRef([]);
+  
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth <= 768;
+      setIsMobileView(isMobile);
+      if (!isMobile) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Menu items configuration
+  const menuItems = [
+    { id: 'projects', label: 'Projects', icon: '📂', onClick: onShowProjects, show: true },
+    { id: 'newProject', label: 'New Project', icon: '➕', onClick: onNewProject, show: true },
+    { 
+      id: 'darkMode', 
+      label: isDarkMode ? 'Light Mode' : 'Dark Mode', 
+      icon: isDarkMode ? '☀️' : '🌙', 
+      onClick: onToggleDarkMode, 
+      show: true 
+    },
+    { id: 'chat', label: 'Chat', icon: '💬', onClick: onToggleChat, show: true },
+    { id: 'settings', label: 'Settings', icon: '⚙️', onClick: onToggleSettings, show: true },
+    { 
+      id: 'profile', 
+      label: username || 'Profile', 
+      icon: username ? username.charAt(0).toUpperCase() : '👤', 
+      onClick: onToggleUserProfile, 
+      show: true 
+    },
+    { 
+      id: 'admin', 
+      label: 'Admin', 
+      icon: '🔒', 
+      onClick: () => console.log('Admin panel clicked'), 
+      show: isAdmin 
+    }
+  ].filter(item => item.show);
+
+  // Handle keyboard navigation for mobile menu
+  const handleKeyDown = (e, index) => {
+    if (!mobileMenuOpen) return;
+    
+    const lastIndex = menuItems.length - 1;
+    let nextIndex;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        nextIndex = index === lastIndex ? 0 : index + 1;
+        mobileMenuRefs.current[nextIndex]?.focus();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        nextIndex = index === 0 ? lastIndex : index - 1;
+        mobileMenuRefs.current[nextIndex]?.focus();
+        break;
+      case 'Escape':
+        setMobileMenuOpen(false);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Base styles
+  const baseStyles = {
+    menuContainer: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '8px 16px',
+      backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+      borderBottom: `1px solid ${isDarkMode ? '#333' : '#e0e0e0'}`,
+      position: 'sticky',
+      top: 0,
+      zIndex: 1000,
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    },
+    branding: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      fontWeight: 'bold',
+      fontSize: '1.1rem',
+      color: isDarkMode ? '#ffffff' : '#333333',
+      textDecoration: 'none'
+    },
+    nav: {
+      display: isMobileView ? 'none' : 'flex',
+      gap: '12px',
+      alignItems: 'center'
+    },
+    navButton: {
+      background: 'none',
+      border: 'none',
+      padding: '8px 12px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      fontSize: '0.95rem',
+      color: isDarkMode ? '#ffffff' : '#333333',
+      transition: 'background-color 0.2s'
+    },
+    navButtonHover: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
+    },
+    navButtonFocus: {
+      outline: `2px solid ${isDarkMode ? '#90caf9' : '#2196f3'}`,
+      outlineOffset: '2px'
+    },
+    mobileMenuButton: {
+      display: isMobileView ? 'block' : 'none',
+      background: 'none',
+      border: 'none',
+      color: isDarkMode ? '#ffffff' : '#333333',
+      fontSize: '1.5rem',
+      cursor: 'pointer',
+      padding: '8px',
+      borderRadius: '4px'
+    },
+    mobileMenu: {
+      position: 'fixed',
+      top: '60px',
+      left: 0,
+      right: 0,
+      backgroundColor: isDarkMode ? '#252526' : '#ffffff',
+      borderBottom: `1px solid ${isDarkMode ? '#333' : '#e0e0e0'}`,
+      padding: '16px',
+      display: mobileMenuOpen ? 'flex' : 'none',
+      flexDirection: 'column',
+      gap: '12px',
+      zIndex: 999,
+      boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+    },
+    mobileMenuItem: {
+      padding: '12px 16px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      background: 'none',
+      border: 'none',
+      width: '100%',
+      textAlign: 'left',
+      fontSize: '1rem',
+      color: isDarkMode ? '#ffffff' : '#333333',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      transition: 'background-color 0.2s'
+    },
+    mobileMenuItemHover: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
+    },
+    mobileMenuItemFocus: {
+      outline: `2px solid ${isDarkMode ? '#90caf9' : '#2196f3'}`,
+      outlineOffset: '2px'
+    },
+    icon: {
+      width: '20px',
+      textAlign: 'center'
+    }
+  };
+
+  // Combine base styles with hover/focus states
+  const getNavButtonStyle = (isHovered = false, isFocused = false) => ({
+    ...baseStyles.navButton,
+    ...(isHovered && baseStyles.navButtonHover),
+    ...(isFocused && baseStyles.navButtonFocus)
+  });
+
+  const getMobileMenuItemStyle = (isHovered = false, isFocused = false) => ({
+    ...baseStyles.mobileMenuItem,
+    ...(isHovered && baseStyles.mavButtonHover),
+    ...(isFocused && baseStyles.mobileMenuItemFocus)
+  });
+
+  return (
+    <div ref={menuRef} style={baseStyles.menuContainer}>
+      <a href="/" style={baseStyles.branding}>
+        <span role="img" aria-label="Coder AI">🤖</span>
+        <span>Coder AI</span>
+      </a>
+
+      <nav style={baseStyles.nav}>
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={item.onClick}
+            style={getNavButtonStyle()}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = baseStyles.navButtonHover.backgroundColor}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            onFocus={(e) => e.currentTarget.style.outline = baseStyles.navButtonFocus.outline}
+            onBlur={(e) => e.currentTarget.style.outline = 'none'}
+            aria-label={item.label}
+          >
+            <span style={baseStyles.icon}>{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <button
+        ref={hamburgerRef}
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        style={baseStyles.mobileMenuButton}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = baseStyles.navButtonHover.backgroundColor}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="mobile-menu"
+      >
+        {mobileMenuOpen ? '✕' : '☰'}
+      </button>
+
+      <div id="mobile-menu" style={baseStyles.mobileMenu}>
+        {menuItems.map((item, index) => (
+          <button
+            key={item.id}
+            ref={(el) => (mobileMenuRefs.current[index] = el)}
+            onClick={(e) => {
+              item.onClick(e);
+              setMobileMenuOpen(false);
+            }}
+            onKeyDown={(e) => handleKeyDown(e, index)}
+            style={getMobileMenuItemStyle()}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = baseStyles.mobileMenuItemHover.backgroundColor}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            onFocus={(e) => e.currentTarget.style.outline = baseStyles.mobileMenuItemFocus.outline}
+            onBlur={(e) => e.currentTarget.style.outline = 'none'}
+            tabIndex={mobileMenuOpen ? 0 : -1}
+          >
+            <span style={baseStyles.icon}>{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default UnifiedMenu;

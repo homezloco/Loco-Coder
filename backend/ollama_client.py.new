@@ -1,0 +1,282 @@
+# /project-root/backend/ollama_client.py
+
+import requests
+import time
+import json
+import subprocess
+from typing import Optional, Dict, Any, Union
+
+class OllamaClient:
+    def __init__(self, url: str, model: str):
+        self.url = url.rstrip('/')
+        self.model = model
+        self.backup_responses = {
+            "help": "I can help you write code, explain concepts, or debug issues.",
+            "error": "I'm sorry, but I couldn't process that request.",
+            "code": "```python\ndef hello_world():\n    print('Hello, World!')\n\nhello_world()\n```",
+        }
+        # Validate connection on initialization
+        self._check_connection()
+    
+    def _check_connection(self) -> bool:
+        """Test connection to Ollama server and ensure the model is available"""
+        try:
+            # First check if Ollama server is running
+            response = requests.get(f"{self.url}/api/tags", timeout=5)
+            response.raise_for_status()
+            
+            # Get available models from Ollama API
+            data = response.json()
+            models = data.get('models', [])
+            
+            if not models:
+                # Try legacy API format as fallback
+                model_names = [model.get('name') for model in data.get('models', [])]
+                # Try another endpoint if that didn't work
+                if not model_names:
+                    list_response = requests.get(f"{self.url}/api/list", timeout=5)
+                    if list_response.ok:
+                        models = list_response.json().get('models', [])
+                        model_names = [model.get('name') for model in models]
+            else:
+                model_names = [model.get('name') for model in models]
+            
+            # Check if model exists (accounting for namespace format like 'namespace/model')
+            model_exists = any(
+                m == self.model or m.endswith(f'/{self.model}') 
+                for m in model_names
+            )
+            
+            if not model_exists:
+                print(f"Warning: Model '{self.model}' not found in available models: {model_names}")
+                print(f"You may need to pull the model using: ollama pull {self.model}")
+            else:
+                print(f"Successfully connected to Ollama. Model '{self.model}' is available.")
+            
+            return True
+        except Exception as e:
+            print(f"Warning: Ollama server connection failed: {e}")
+            print(f"Using URL: {self.url}")
+            return False
+
+    def generate(self, prompt: str) -> str:
+        """Generate a response from the Ollama model with fallback mechanisms"""
+        # Retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Debug output
+                print(f"\n==== Ollama Debug Info ====")
+                print(f"URL: {self.url}")
+                print(f"Model: {self.model}")
+                print(f"Prompt: {prompt[:50]}..." if len(prompt) > 50 else prompt)
+                
+                # APPROACH 1: Direct API call using the /api/generate endpoint
+                response = self._try_api_generate(prompt)
+                if response:
+                    return response
+                    
+                # APPROACH 2: Try completion endpoint if generate fails
+                response = self._try_api_completion(prompt)
+                if response:
+                    return response
+                
+                # APPROACH 3: Use curl as fallback
+                response = self._try_curl_fallback(prompt)
+                if response:
+                    return response
+                
+                # APPROACH 4: Use CLI as last resort
+                response = self._try_cli_fallback(prompt)
+                if response:
+                    return response
+                
+                # If we still failed, let's try one more time after a delay
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    print(f"All approaches failed. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                
+                # All attempts failed, use fallback response
+                return self._get_fallback_response(prompt)
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"Error on attempt {attempt+1}/{max_retries}: {e}, retrying...")
+                    time.sleep(1)
+                    continue
+                else:
+                    # All retries failed, create a helpful error message
+                    error_msg = f"Failed to generate response after {max_retries} attempts. "  
+                    error_msg += f"Last error: {str(e)}. "
+                    error_msg += f"Troubleshooting: Make sure Ollama is running and the model '{self.model}' is pulled."
+                    print(error_msg)
+                    return self._get_fallback_response(prompt)
+    
+    def _try_api_generate(self, prompt: str) -> Optional[str]:
+        """Try the standard Ollama /api/generate endpoint"""
+        try:
+            print(f"Attempting Ollama /api/generate with model {self.model}")
+            
+            # Standard payload format for Ollama
+            payload = {
+                "model": self.model,
+                "prompt": prompt
+            }
+            
+            print(f"Request payload: {payload}")
+            response = requests.post(
+                f"{self.url}/api/generate",
+                json=payload,
+                timeout=60
+            )
+            
+            print(f"Response status: {response.status_code}")
+            
+            if response.ok:
+                data = response.json()
+                if 'response' in data:
+                    print(f"Success! Got response from Ollama /api/generate")
+                    return data['response']
+                else:
+                    print(f"Response doesn't contain 'response' key: {list(data.keys())}")
+            else:
+                print(f"Error response from API: {response.text[:100]}")
+                
+            return None
+        except Exception as e:
+            print(f"Exception during /api/generate call: {str(e)}")
+            return None
+            
+    def _try_api_completion(self, prompt: str) -> Optional[str]:
+        """Try the Ollama /api/completion endpoint as alternative"""
+        try:
+            print(f"Attempting Ollama /api/completion with model {self.model}")
+            
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False
+            }
+            
+            response = requests.post(
+                f"{self.url}/api/completion",
+                json=payload,
+                timeout=60
+            )
+            
+            if response.ok:
+                data = response.json()
+                if 'response' in data:
+                    print(f"Success! Got response from Ollama /api/completion")
+                    return data['response']
+                else:
+                    print(f"Response doesn't contain 'response' key: {list(data.keys())}")
+            else:
+                print(f"Error response from completion API: {response.text[:100]}")
+                
+            return None
+        except Exception as e:
+            print(f"Exception during /api/completion call: {str(e)}")
+            return None
+
+    def _try_curl_fallback(self, prompt: str) -> Optional[str]:
+        """Use curl subprocess as a fallback method"""
+        try:
+            print("Attempting curl subprocess as fallback")
+            
+            # Create a temporary JSON file for the payload to avoid escaping issues
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+                payload = {
+                    "model": self.model,
+                    "prompt": prompt
+                }
+                json.dump(payload, f)
+                temp_file = f.name
+            
+            # Use the file in the curl command
+            curl_cmd = f'curl -s -X POST {self.url}/api/generate -H "Content-Type: application/json" -d @{temp_file}'
+            print(f"Curl command: {curl_cmd}")
+            
+            # Execute the curl command
+            result = subprocess.run(curl_cmd, shell=True, text=True, capture_output=True)
+            print(f"Curl exit code: {result.returncode}")
+            
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+            
+            if result.stdout:
+                try:
+                    data = json.loads(result.stdout)
+                    print(f"Curl success! Response keys: {list(data.keys())}")
+                    if 'response' in data:
+                        return data['response']
+                    else:
+                        print(f"Curl response doesn't contain 'response' key")
+                except Exception as e:
+                    print(f"Error parsing curl output: {e}")
+                    print(f"Raw curl output: {result.stdout[:100]}")
+            
+            if result.stderr:
+                print(f"Curl error: {result.stderr}")
+                
+            return None
+        except Exception as e:
+            print(f"Exception during curl fallback: {str(e)}")
+            return None
+
+    def _try_cli_fallback(self, prompt: str) -> Optional[str]:
+        """Use direct Ollama CLI as final fallback"""
+        try:
+            print("Attempting direct Ollama CLI command")
+            
+            # Create a temporary file for the prompt to avoid escaping issues
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+                f.write(prompt)
+                temp_file = f.name
+            
+            # Use the file with the CLI command
+            ollama_cmd = f'ollama run {self.model} --file {temp_file}'
+            print(f"Ollama command: {ollama_cmd}")
+            
+            result = subprocess.run(ollama_cmd, shell=True, text=True, capture_output=True)
+            print(f"Ollama CLI exit code: {result.returncode}")
+            
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+            
+            if result.stdout:
+                print(f"Ollama CLI success!")
+                return result.stdout.strip()
+                
+            if result.stderr and result.returncode != 0:
+                print(f"Ollama CLI error: {result.stderr}")
+                
+            return None
+        except Exception as e:
+            print(f"Exception during Ollama CLI fallback: {str(e)}")
+            return None
+    
+    def _get_fallback_response(self, prompt: str) -> str:
+        """Provide a contextual fallback response when the API is unavailable"""
+        prompt_lower = prompt.lower()
+        
+        if any(word in prompt_lower for word in ["help", "assist", "support"]):
+            return self.backup_responses["help"]
+        elif any(word in prompt_lower for word in ["code", "function", "program"]):
+            return self.backup_responses["code"]
+        else:
+            return "Ollama service is currently unavailable. Please ensure that:\n\n1. The Ollama server is running with `ollama serve`\n2. Your model is available with `ollama list`\n3. You can start the model with `ollama run codellama:instruct`\n\nIf it's still not working, check that no other service is using port 11434 and that Ollama is properly installed."

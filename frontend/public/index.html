@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Local AI-powered coding platform with Monaco editor and LLM assistance">
+  <title>Local AI Coding Platform</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    /* Add proper body spacing for the menu */
+    body {
+      padding-top: 60px;
+      margin: 0;
+    }
+  </style>
+  <script>
+    // Ensure local storage is set for dashboard visibility
+    localStorage.setItem('showProjectDashboard', 'true');
+
+    // Cleanup script - Remove any legacy menu injected by older scripts
+    window.addEventListener('load', function() {
+      // Find our React menu element
+      const reactMenu = document.getElementById('guaranteed-menu');
+      
+      // Check for any other menus added outside of React
+      const bodyChildren = document.body.children;
+      for (let i = 0; i < bodyChildren.length; i++) {
+        const el = bodyChildren[i];
+        // Skip React root and our scripts
+        if (el.id === 'root' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
+          continue;
+        }
+        
+        // Check if this might be another menu
+        if (el.tagName === 'DIV' && 
+            el.id !== 'guaranteed-menu' && 
+            (el.style.position === 'fixed' || 
+             el.style.position === 'absolute') && 
+            el.style.top === '0px') {
+          console.log('Removing duplicate menu element:', el);
+          el.parentNode.removeChild(el);
+        }
+      }
+    });
+  </script>
+</head>
+<body>
+  
+  <!-- Using React's GuaranteedMenu component for menu rendering -->
+  
+  <!-- Root div for React app -->
+  <div id="root"></div>
+  
+  <!-- Only using React's module for rendering the menu system -->
+  <script type="module" src="/src/index.jsx"></script>
+  
+  <!-- Keyboard Shortcuts - System-wide keyboard navigation -->
+  <script src="/keyboard-shortcuts.js"></script>
+</body>
+</html>

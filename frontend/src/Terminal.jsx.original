@@ -1,0 +1,150 @@
+import React, { useRef, useEffect, useState } from 'react';
+import './terminal-styles.css'; // Make sure to create this CSS file
+
+export default function Terminal({ output }) {
+  const terminalRef = useRef(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const prevOutputLengthRef = useRef(output?.length || 0);
+  
+  // Handle output change and trigger flash effect
+  useEffect(() => {
+    if (output?.length > prevOutputLengthRef.current) {
+      // Output has been added - trigger flash effect
+      setFlash(true);
+      setTimeout(() => setFlash(false), 500);
+    }
+    prevOutputLengthRef.current = output?.length || 0;
+  }, [output]);
+
+  // Auto-scroll to bottom when output changes
+  useEffect(() => {
+    if (terminalRef.current && !isCollapsed) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [output, isCollapsed]);
+
+  // Format output with line numbers
+  const formatOutput = (outputText) => {
+    if (!outputText) return null;
+    
+    const lines = outputText.split('\n');
+    return lines.map((line, idx) => (
+      <div className="terminal-line" key={idx}>
+        <span className="line-number">{idx + 1}</span>
+      }
+    }
+  }, [output]);
+  
+  // Handle resize for better visibility
+  useEffect(() => {
+    // Ensure terminal takes up appropriate space based on content
+    const updateHeight = () => {
+      const viewportHeight = window.innerHeight;
+      const minHeight = Math.min(300, viewportHeight * 0.3); // At least 30% of viewport or 300px
+      setOutputHeight(`calc(100% - 30px)`);
+    };
+    
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
+  
+  // Format output with line numbers and ensure visibility
+  const formatOutput = (text) => {
+    if (!text) return <span className="terminal-prompt">Ready to execute code...</span>;
+    
+    return text.split('\n').map((line, i) => (
+      <div key={i} className="terminal-line">
+        <span className="line-number">{i+1}</span>
+        <span className="line-content">{line}</span>
+      </div>
+    ));
+  };
+  
+  // Toggle terminal visibility
+  const toggleVisibility = () => {
+    setIsVisible(!isVisible);
+  };
+  
+  return (
+    <div className="terminal-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+      <div className="terminal-header" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '5px 10px',
+        backgroundColor: '#2d2d2d',
+        borderBottom: '1px solid #444',
+        color: '#ddd',
+        fontWeight: 'bold'
+      }}>
+        <span className="terminal-title" style={{ fontSize: '14px' }}>Output</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="terminal-status" style={{ fontSize: '12px', color: '#888' }}>
+            {output ? 'Execution complete' : 'Ready'}
+          </span>
+          <button 
+            onClick={toggleVisibility} 
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              color: '#aaa',
+              cursor: 'pointer',
+              fontSize: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px'
+            }}
+          >
+            {isVisible ? '▼' : '▲'}
+          </button>
+        </div>
+      </div>
+      
+      <div 
+        className="terminal" 
+        ref={terminalRef} 
+        style={{
+          height: isVisible ? outputHeight : '0px',
+          maxHeight: '100%',
+          overflowY: 'auto',
+          overflowX: 'auto',
+          padding: isVisible ? '10px' : '0px',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          backgroundColor: '#1e1e1e',
+          color: '#f0f0f0',
+          borderRadius: '4px',
+          border: '1px solid #444',
+          fontSize: '14px',
+          lineHeight: '1.6',
+          scrollbarWidth: 'auto', // Changed from 'thin' to 'auto' for better visibility
+          scrollbarColor: '#666 #1e1e1e',
+          transition: 'height 0.3s, padding 0.3s',
+          flex: isVisible ? '1' : '0',
+          display: 'block', // Explicitly set display
+          visibility: isVisible ? 'visible' : 'hidden', // Use visibility to maintain layout
+          opacity: isVisible ? '1' : '0' // Fade in/out
+        }}
+      >
+        {formatOutput(output)}
+      </div>
+      
+      {/* Show this message if terminal is collapsed but has output */}
+      {!isVisible && output && (
+        <div style={{
+          textAlign: 'center', 
+          padding: '5px', 
+          backgroundColor: '#333',
+          color: '#aaa',
+          fontSize: '12px'
+        }}>
+          Terminal output hidden (click ▲ to show)
+        </div>
+      )}
+    </div>
+  );
+}

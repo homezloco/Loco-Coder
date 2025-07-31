@@ -1,0 +1,14 @@
+[
+  {
+    "id": "3b599176-7c1c-4f9d-a208-e3a571c856f2",
+    "name": "My First Project",
+    "description": "A sample project to get you started",
+    "project_type": "web",
+    "owner_id": "test-user-id",
+    "organization_id": null,
+    "created_at": "2025-07-20T17:19:04.856268",
+    "updated_at": "2025-07-20T17:19:04.856268",
+    "is_active": true,
+    "config": {}
+  }
+]

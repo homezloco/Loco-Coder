@@ -1,0 +1,79 @@
+.flexible-output {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.flexible-output-toolbar {
+  padding: 8px;
+  background-color: var(--editor-bg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flexible-output-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* Dark mode support */
+[data-theme='dark'] .flexible-output-toolbar {
+  background-color: var(--editor-bg-dark);
+  border-bottom-color: var(--border-color-dark);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .flexible-output-toolbar {
+    padding: 6px;
+  }
+}
+
+/* Animation for panel resizing */
+.panel-resize-handle {
+  background-color: var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
+  background-color: var(--primary-color);
+}
+
+/* Dark mode adjustments for panel handles */
+[data-theme='dark'] .panel-resize-handle {
+  background-color: var(--border-color-dark);
+}
+
+[data-theme='dark'] .panel-resize-handle:hover,
+[data-theme='dark'] .panel-resize-handle:active {
+  background-color: var(--primary-color-dark);
+}
+
+/* Enhanced handle for better visibility */
+.panel-resize-handle.enhanced {
+  width: 8px !important;
+  background-color: var(--border-color);
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+.panel-resize-handle.enhanced:hover,
+.panel-resize-handle.enhanced:active {
+  opacity: 1;
+  background-color: var(--primary-color);
+}
+
+[data-theme='dark'] .panel-resize-handle.enhanced {
+  background-color: var(--border-color-dark);
+}
+
+[data-theme='dark'] .panel-resize-handle.enhanced:hover,
+[data-theme='dark'] .panel-resize-handle.enhanced:active {
+  background-color: var(--primary-color-dark);
+}

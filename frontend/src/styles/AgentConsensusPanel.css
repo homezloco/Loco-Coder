@@ -1,0 +1,350 @@
+.agent-consensus-panel {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.panel-container {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(400px, 2fr);
+  gap: 30px;
+}
+
+@media (max-width: 900px) {
+  .panel-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.error-message {
+  background-color: #ffe6e6;
+  color: #cc0000;
+  border: 1px solid #cc0000;
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-message button {
+  background: none;
+  border: none;
+  color: #cc0000;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* Agents Section Styles */
+.agents-section, .tasks-section {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.agent-list {
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.agent-item {
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+  background-color: white;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name indicator"
+    "role indicator"
+    "weight indicator";
+  position: relative;
+}
+
+.agent-item:last-child {
+  border-bottom: none;
+}
+
+.agent-item:hover {
+  background-color: #f0f7ff;
+}
+
+.agent-item.selected {
+  background-color: #e6f3ff;
+  border-left: 4px solid #0078d4;
+}
+
+.agent-name {
+  grid-area: name;
+  font-weight: bold;
+}
+
+.agent-role {
+  grid-area: role;
+  color: #555;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.agent-weight {
+  grid-area: weight;
+  color: #666;
+  font-size: 0.8em;
+  margin-top: 2px;
+}
+
+.agent-select-indicator {
+  grid-area: indicator;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0078d4;
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1em;
+}
+
+.register-agent-button,
+.create-task-button,
+.retry-task-button {
+  padding: 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: #0078d4;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.register-agent-button:hover,
+.create-task-button:hover,
+.retry-task-button:hover {
+  background-color: #005a9e;
+}
+
+.register-agent-button:disabled,
+.create-task-button:disabled,
+.retry-task-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Tasks Section Styles */
+.selected-agents {
+  margin-bottom: 15px;
+}
+
+.selected-agent-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agent-pill {
+  background-color: #e6f3ff;
+  border: 1px solid #0078d4;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.remove-agent {
+  background: none;
+  border: none;
+  color: #0078d4;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.task-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.task-item {
+  background-color: white;
+  border-radius: 6px;
+  border-left: 4px solid #ccc;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+  transition: transform 0.2s;
+}
+
+.task-item:hover {
+  transform: translateY(-2px);
+}
+
+.task-item.status-completed {
+  border-left-color: #28a745;
+}
+
+.task-item.status-failed,
+.task-item.status-error {
+  border-left-color: #dc3545;
+}
+
+.task-item.status-created,
+.task-item.status-in_progress,
+.task-item.status-retrying {
+  border-left-color: #17a2b8;
+}
+
+.task-item.status-no_consensus {
+  border-left-color: #ffc107;
+}
+
+.task-item.status-offline_pending {
+  border-left-color: #6c757d;
+  background-color: #f8f8f8;
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.task-description {
+  font-weight: 500;
+  flex: 1;
+}
+
+.task-status {
+  background-color: #eee;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+
+.status-completed .task-status {
+  background-color: #d4edda;
+  color: #28a745;
+}
+
+.status-failed .task-status,
+.status-error .task-status {
+  background-color: #f8d7da;
+  color: #dc3545;
+}
+
+.status-created .task-status,
+.status-in_progress .task-status,
+.status-retrying .task-status {
+  background-color: #d1ecf1;
+  color: #17a2b8;
+}
+
+.status-no_consensus .task-status {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-offline_pending .task-status {
+  background-color: #e9ecef;
+  color: #6c757d;
+}
+
+.task-details {
+  display: flex;
+  gap: 15px;
+  font-size: 0.9em;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.task-result {
+  margin-top: 15px;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.confidence {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.consensus-content {
+  background-color: #f8f9fa;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.consensus-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.retry-task-button {
+  margin-top: 10px;
+  width: auto;
+  align-self: flex-start;
+  font-size: 0.9em;
+}
+
+.offline-status {
+  margin-top: 10px;
+  font-size: 0.9em;
+  display: flex;
+  justify-content: space-between;
+  color: #6c757d;
+}

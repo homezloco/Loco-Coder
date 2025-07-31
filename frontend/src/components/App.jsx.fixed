@@ -1,0 +1,493 @@
+import React, { useState, useEffect } from 'react';
+import CodeEditor from './CodeEditor';
+import ConnectionTest from '../ConnectionTest';
+import api from '../api';
+import MainMenu from './MainMenu';
+import UserProfilePanel from './UserProfilePanel';
+import ProjectDashboard from './ProjectDashboard';
+import EmergencyMenu from './EmergencyMenu';
+import AbsoluteMenu from './AbsoluteMenu';
+
+/**
+ * Main App component with layout and error boundaries
+ */
+const App = () => {
+  const [backendStatus, setBackendStatus] = useState('checking');
+  const [isConnected, setIsConnected] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [showConnectionTest, setShowConnectionTest] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [showProjectDashboard, setShowProjectDashboard] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // Initialize the menus with forced visibility
+  useEffect(() => {
+    // Force render menus using direct DOM if needed
+    const injectFallbackMenus = () => {
+      console.log("Checking menu visibility...");
+      
+      // Check if any of our menus are visible
+      const menuElements = document.querySelectorAll('.app-header, .absolute-menu, .emergency-menu');
+      let menuVisible = false;
+      
+      for (const menu of menuElements) {
+        if (menu && window.getComputedStyle(menu).display !== 'none') {
+          menuVisible = true;
+          break;
+        }
+      }
+      
+      if (!menuVisible) {
+        console.warn("No menus visible, injecting fallback...");
+        
+        // Create a fallback menu element
+        const fallbackMenu = document.createElement('div');
+        fallbackMenu.style.position = 'fixed';
+        fallbackMenu.style.top = '0';
+        fallbackMenu.style.left = '0';
+        fallbackMenu.style.width = '100%';
+        fallbackMenu.style.backgroundColor = '#ff5722';
+        fallbackMenu.style.color = 'white';
+        fallbackMenu.style.padding = '10px';
+        fallbackMenu.style.zIndex = '9999999';
+        fallbackMenu.style.display = 'flex';
+        fallbackMenu.style.justifyContent = 'space-between';
+        
+        fallbackMenu.innerHTML = `
+          <div>Coder AI Platform</div>
+          <div>
+            <button onclick="window.location.href='/'">Projects</button>
+            <button onclick="window.location.href='/direct-menu.html'">Menu</button>
+            <button onclick="window.location.reload()">Reload</button>
+          </div>
+        `;
+        
+        document.body.appendChild(fallbackMenu);
+      }
+    };
+    
+    // Check on load and periodically
+    injectFallbackMenus();
+    const interval = setInterval(injectFallbackMenus, 3000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Check backend connectivity with fallbacks
+  useEffect(() => {
+    const checkBackendConnectivity = async () => {
+      setBackendStatus('checking');
+      setErrorMessage(null);
+      
+      // Try multiple connection methods
+      try {
+        // Primary method: API client with its own fallbacks
+        const healthResponse = await api.checkHealth();
+        setBackendStatus(healthResponse.status || 'connected');
+        setIsConnected(true);
+      } catch (primaryError) {
+        console.error('Primary connection method failed:', primaryError);
+        
+        // Fallback 1: Direct fetch to localhost
+        try {
+          const response = await fetch('http://localhost:8000/health');
+          if (response.ok) {
+            const data = await response.json();
+            setBackendStatus(`connected (direct: ${data.status})`);
+            setIsConnected(true);
+            return;
+          }
+        } catch (directError) {
+          console.error('Direct connection also failed:', directError);
+        }
+        
+        // Fallback 2: Try alternative IP
+        try {
+          const response = await fetch('http://127.0.0.1:8000/health');
+          if (response.ok) {
+            const data = await response.json();
+            setBackendStatus(`connected (alt-ip: ${data.status})`);
+            setIsConnected(true);
+            return;
+          }
+        } catch (altIpError) {
+          console.error('Alternative IP connection failed:', altIpError);
+        }
+        
+        // All methods failed
+        setBackendStatus('disconnected');
+        setIsConnected(false);
+        setErrorMessage('Unable to connect to backend API. Please check if the server is running.');
+      }
+    };
+    
+    checkBackendConnectivity();
+    
+    // Periodically check connectivity
+    const interval = setInterval(checkBackendConnectivity, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Set up keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Alt+P: Show Projects
+      if (e.altKey && e.key === 'p') {
+        setShowProjectDashboard(true);
+      }
+      // Alt+U: Toggle User Profile
+      else if (e.altKey && e.key === 'u') {
+        setShowUserProfile(!showUserProfile);
+      }
+      // Alt+N: New Project (via ProjectDashboard)
+      else if (e.altKey && e.key === 'n') {
+        setShowProjectDashboard(true);
+        // Will focus on new project in the dashboard
+      }
+      // Alt+C: Connection Test
+      else if (e.altKey && e.key === 'c') {
+        setShowConnectionTest(!showConnectionTest);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showUserProfile, showProjectDashboard, showConnectionTest]);
+
+  return (
+    <div className="app">
+      {/* GUARANTEE ABSOLUTE MENU - This must always be visible */}
+      <AbsoluteMenu 
+        onShowProjects={() => setShowProjectDashboard(true)} 
+        onNewProject={() => {
+          setShowProjectDashboard(true);
+          // Set focus on new project button
+          setTimeout(() => {
+            const newProjectBtn = document.querySelector('.new-project-button');
+            if (newProjectBtn) newProjectBtn.focus();
+          }, 100);
+        }}
+        onShowMenu={() => {
+          // Toggle user profile
+          setShowUserProfile(!showUserProfile);
+        }}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 9999,
+          boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+          display: 'flex'
+        }}
+      />
+      
+      {/* EMERGENCY MENU - Fallback if other components fail */}
+      <EmergencyMenu />
+      
+      {/* Standard Header with backend status */}
+      <header className="app-header" style={{
+        backgroundColor: '#1a1a1a',
+        color: 'white',
+        padding: '10px 20px',
+        marginTop: '50px', /* Make room for absolute menu */
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        zIndex: 100,
+        position: 'relative'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Coder AI Platform</h1>
+          
+          {/* Backend connectivity indicator */}
+          <div style={{
+            marginLeft: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '5px 10px',
+            backgroundColor: backendStatus === 'degraded' ? '#5b4e1e' : 
+                           isConnected ? '#1e5b1e' : '#5b1e1e',
+            borderRadius: '4px',
+            fontSize: '0.8rem'
+          }}>
+            <div style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              backgroundColor: backendStatus === 'degraded' ? '#FFC107' : 
+                             isConnected ? '#4caf50' : '#f44336',
+              marginRight: '5px'
+            }}></div>
+            Backend: {backendStatus === 'degraded' ? 'degraded (fallbacks active)' : backendStatus}
+          </div>
+          
+          {/* Toggle connection test button */}
+          <button 
+            onClick={() => setShowConnectionTest(!showConnectionTest)}
+            style={{
+              marginLeft: '10px',
+              backgroundColor: 'transparent',
+              color: '#bbbbbb',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '0.8rem',
+              cursor: 'pointer'
+            }}
+          >
+            {showConnectionTest ? 'Hide' : 'Show'} Connection Test
+          </button>
+        </div>
+        
+        <div>
+          {/* Right side menu items */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            style={{
+              backgroundColor: 'transparent',
+              color: '#bbbbbb',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              marginRight: '10px'
+            }}
+          >
+            {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
+          
+          <button
+            onClick={() => setShowUserProfile(!showUserProfile)}
+            style={{
+              backgroundColor: 'transparent',
+              color: '#bbbbbb',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '0.8rem',
+              cursor: 'pointer'
+            }}
+          >
+            User Profile
+          </button>
+        </div>
+      </header>
+      
+      {/* Connection test panel (collapsible) */}
+      {showConnectionTest && (
+        <div style={{ padding: '10px', borderBottom: '1px solid #ddd' }}>
+          <ConnectionTest />
+        </div>
+      )}
+      
+      {/* Main content area */}
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {errorMessage ? (
+          <div style={{
+            padding: '20px',
+            margin: '20px',
+            backgroundColor: '#ffeeee',
+            border: '1px solid #ffaaaa',
+            borderRadius: '4px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center'
+          }}>
+            <h2 style={{ color: '#cc0000' }}>Connection Error</h2>
+            <p>{errorMessage}</p>
+            <p>Troubleshooting steps:</p>
+            <ol>
+              <li>Make sure the backend server is running.</li>
+              <li>Check if the backend is accessible at <code>http://localhost:8000/health</code>.</li>
+              <li>Verify there are no firewall or network issues blocking the connection.</li>
+              <li>Try restarting both frontend and backend servers.</li>
+            </ol>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                backgroundColor: '#cc0000',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '8px 16px',
+                cursor: 'pointer',
+                marginTop: '10px'
+              }}
+            >
+              Retry Connection
+            </button>
+          </div>
+        ) : (
+          <ErrorBoundary>
+            <CodeEditor />
+          </ErrorBoundary>
+        )}
+      </main>
+      
+      {/* User Profile Panel (modal) */}
+      {showUserProfile && (
+        <div style={{
+          position: 'fixed',
+          top: '60px',
+          right: '10px',
+          width: '300px',
+          backgroundColor: '#fff',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+          borderRadius: '4px',
+          zIndex: 1000
+        }}>
+          <UserProfilePanel 
+            onClose={() => setShowUserProfile(false)}
+            onLogout={() => {
+              // Handle logout
+              console.log('User logged out');
+              setShowUserProfile(false);
+            }}
+          />
+        </div>
+      )}
+      
+      {/* Project Dashboard (modal) */}
+      {showProjectDashboard && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '80%',
+          maxWidth: '800px',
+          height: '80%',
+          maxHeight: '600px',
+          backgroundColor: '#fff',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          borderRadius: '4px',
+          zIndex: 1000,
+          overflow: 'auto'
+        }}>
+          <ProjectDashboard 
+            onClose={() => setShowProjectDashboard(false)}
+            onSelectProject={(project) => {
+              console.log('Selected project:', project);
+              setShowProjectDashboard(false);
+              // Handle project selection
+            }}
+          />
+        </div>
+      )}
+      
+      {/* Main Menu - Expanded side menu */}
+      <div style={{
+        position: 'fixed',
+        top: '50px',
+        left: '0',
+        width: '250px',
+        height: 'calc(100vh - 50px)',
+        backgroundColor: '#222',
+        transform: 'translateX(-250px)', /* Hidden by default */
+        transition: 'transform 0.3s ease',
+        zIndex: 999,
+        boxShadow: '2px 0 10px rgba(0,0,0,0.2)'
+      }}>
+        <MainMenu 
+          authenticated={true}
+          username="User"
+          isAdmin={false}
+          onLogout={() => {}}
+          onNewFile={() => {}}
+          onNewProject={() => {}}
+          onSave={() => {}}
+          onSaveAs={() => {}}
+          onToggleSystemHealth={() => {}}
+          onToggleAgentConsensus={() => {}}
+          isSystemHealthVisible={false}
+          isAgentConsensusVisible={false}
+          apiStatus="ok"
+          onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+          isDarkMode={isDarkMode}
+          onToggleUserProfile={() => setShowUserProfile(!showUserProfile)}
+          onToggleProjectDashboard={() => setShowProjectDashboard(!showProjectDashboard)}
+        />
+      </div>
+      
+      {/* Footer */}
+      <footer style={{
+        backgroundColor: '#f5f5f5',
+        padding: '10px 20px',
+        borderTop: '1px solid #ddd',
+        fontSize: '0.8rem',
+        color: '#666',
+        textAlign: 'center'
+      }}>
+        Coder AI Platform © {new Date().getFullYear()} | Local AI Coding Assistant
+      </footer>
+    </div>
+  );
+};
+
+/**
+ * Error boundary component to catch render errors
+ */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Component error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          padding: '20px',
+          margin: '20px',
+          backgroundColor: '#ffeeee',
+          border: '1px solid #ffaaaa',
+          borderRadius: '4px',
+        }}>
+          <h2>Component Error</h2>
+          <p>Something went wrong while rendering this component.</p>
+          <details style={{ marginTop: '10px', cursor: 'pointer' }}>
+            <summary>Error details</summary>
+            <pre style={{ 
+              marginTop: '10px',
+              padding: '10px',
+              backgroundColor: '#f8f8f8',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              overflow: 'auto'
+            }}>
+              {this.state.error && (this.state.error.toString())}
+            </pre>
+          </details>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              backgroundColor: '#cc0000',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: 'pointer',
+              marginTop: '15px'
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default App;

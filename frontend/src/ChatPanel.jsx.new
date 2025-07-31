@@ -1,0 +1,807 @@
+// /project-root/frontend/src/ChatPanel.jsx
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { chat, checkChatApiHealth, loadUserSettings, saveUserSettings, getDefaultChatSettings } from './utils/chatUtils';
+import { selectAIModel } from './utils/aiModelManager';
+import { defaultModels } from './utils/modelConfig';
+import './ChatPanel.css';
+import ChatSettings from './components/ChatSettings';
+// Import CodeConfirmation component
+import CodeConfirmation from './components/CodeConfirmation';
+      <pre className="code-preview">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+};
+
+export default function ChatPanel({ codeIntegration, isDarkMode = false, initialApiEndpoint = 'http://localhost:5000/api', initialSettings = {}, onUpdateSettings }) {
+  const [prompt, setPrompt] = useState('');
+  const [responses, setResponses] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Checking connection...' });
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [pendingCodeAction, setPendingCodeAction] = useState(null);
+  const [chatSettings, setChatSettings] = useState(() => {
+    // Merge initial settings with defaults
+    return { ...getDefaultChatSettings(), ...initialSettings };
+  });
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [forceOnlineMode, setForceOnlineMode] = useState(false);
+  
+  const chatHistoryRef = useRef(null);
+  const inputRef = useRef(null);
+  const offlinePendingMessages = useRef([]);
+  
+  // Auto-scroll chat history when new messages appear
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+    }
+  }, [responses]);
+  
+  // Load chat history and settings from storage on initial render
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Load settings first
+        const savedSettings = await loadUserSettings();
+        const mergedSettings = {
+          ...getDefaultChatSettings(),
+          ...savedSettings
+        };
+        
+        setChatSettings(mergedSettings);
+        
+        // Notify parent component if provided
+        if (onUpdateSettings) {
+          onUpdateSettings(mergedSettings);
+        }
+        
+        // Initialize connectivity check first to get accurate offline status
+        console.log('Checking initial connectivity status...');
+        
+        // Start with navigator.onLine as preliminary check
+        const initialOfflineCheck = typeof navigator !== 'undefined' && !navigator.onLine;
+        setOfflineMode(initialOfflineCheck); // Set preliminary offline status
+        
+        // Initialize selected AI model based on settings and initial offline check
+        const modelInfo = await selectAIModel(mergedSettings, initialOfflineCheck, defaultModels);
+        setSelectedModel(modelInfo);
+        console.log('Selected AI model:', modelInfo);
+        
+        // Load chat history
+        const chatHistory = await loadChatHistory();
+        if (chatHistory) {
+          setResponses(chatHistory);
+        }
+        
+        console.log('Initialized app with settings and history');
+      } catch (error) {
+        console.error('Error initializing app:', error);
+      }
+    };
+    
+    initializeApp();
+    
+    // Add event listeners for online/offline status
+    const handleOnline = () => {
+      console.log('Device is online');
+      setOfflineMode(false);
+      checkChatApiStatus();
+    };
+    
+    const handleOffline = () => {
+      console.log('Device is offline');
+      setOfflineMode(true);
+      setApiStatus({
+        status: 'offline',
+        message: 'No internet connection detected'
+      });
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Check API status on mount after a short delay to allow settings to load
+    setTimeout(() => {
+      checkChatApiStatus();
+    }, 500); // Increased delay for better reliability
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  
+  // Save chat history to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('chatHistory', JSON.stringify(responses));
+    } catch (error) {
+      console.error('Error saving chat history to localStorage:', error);
+    }
+  }, [responses]);
+  
+  // Check API health status
+  const checkChatApiStatus = useCallback(async () => {
+    try {
+      // First check if browser reports we have internet connection
+      const hasNavigatorConnection = typeof navigator !== 'undefined' && navigator.onLine;
+      
+      if (!hasNavigatorConnection) {
+        setApiStatus({
+          status: 'offline',
+          message: 'No internet connection detected'
+        });
+        setOfflineMode(true);
+        return;
+      }
+      
+      // Try a lightweight fetch to a reliable public endpoint to verify actual internet connectivity
+      try {
+        // Use a basic ping test with a short timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        // Try multiple reliable endpoints in case one is blocked
+        const endpoints = [
+          'https://www.google.com/favicon.ico',
+          'https://www.cloudflare.com/favicon.ico'
+        ];
+        
+        let internetAvailable = false;
+        for (const endpoint of endpoints) {
+          try {
+            const response = await fetch(`${endpoint}?_=${Date.now()}`, {
+              method: 'HEAD',
+              mode: 'no-cors',
+              cache: 'no-store',
+              signal: controller.signal
+            });
+            
+            internetAvailable = true;
+            break;
+          } catch (e) {
+            // Try next endpoint
+          }
+        }
+        
+        clearTimeout(timeoutId);
+        
+        if (!internetAvailable) {
+          setApiStatus({
+            status: 'offline',
+            message: 'Internet connection test failed'
+          });
+          setOfflineMode(true);
+          return;
+        }
+      } catch (netError) {
+        console.warn('Internet connectivity test failed:', netError);
+        // Continue with API health check even if the internet test fails
+      }
+      
+      // Now check the actual API endpoint health
+      try {
+        // If force online mode is enabled, skip the actual API check
+        if (forceOnlineMode) {
+          const forcedStatus = {
+            status: 'online',
+            message: 'Force online mode enabled'
+          };
+          setApiStatus(forcedStatus);
+          setOfflineMode(false);
+          
+          // Clear any cached offline status
+          try {
+            localStorage.removeItem('apiHealthCache');
+            localStorage.removeItem('apiHealthStatus');
+          } catch (e) {
+            // Ignore errors clearing localStorage
+          }
+          
+          // Process any pending messages
+          if (offlinePendingMessages.current.length > 0) {
+            processPendingMessages();
+          }
+          return;
+        }
+        
+        // Regular API health check flow
+        const apiHealth = await checkChatApiHealth(chatSettings.apiEndpoint || 'http://localhost:5000/api');
+        
+        setApiStatus(apiHealth);
+        setOfflineMode(apiHealth.status !== 'online');
+        
+        // If we're back online and have pending messages, process them
+        if (apiHealth.status === 'online' && !offlineMode && offlinePendingMessages.current.length > 0) {
+          processPendingMessages();
+        }
+      } catch (apiError) {
+        console.error('Error checking API health:', apiError);
+        setApiStatus({
+          status: 'error',
+          message: 'Error checking API connection'
+        });
+      }
+    } catch (error) {
+      console.error('Error in checkChatApiStatus:', error);
+      setApiStatus({
+        status: 'error', 
+        message: 'Error checking connection'
+      });
+    }
+  }, [chatSettings.apiEndpoint, offlineMode, processPendingMessages]);
+  
+  // Process any pending messages when back online
+  const processPendingMessages = async () => {
+    if (offlinePendingMessages.current.length === 0) return;
+    
+    setResponses(prev => [
+      ...prev,
+      { 
+        type: 'system', 
+        content: `Reconnected to API. Sending ${offlinePendingMessages.current.length} pending message(s)...`,
+        timestamp: Date.now()
+      }
+    ]);
+    
+    // Process all pending messages
+    const pendingMessages = [...offlinePendingMessages.current];
+    offlinePendingMessages.current = [];
+    
+    try {
+      localStorage.setItem('offlinePendingMessages', JSON.stringify(offlinePendingMessages.current));
+    } catch (error) {
+      console.error('Error updating offline pending messages in localStorage:', error);
+    }
+    
+    for (const pendingMessage of pendingMessages) {
+      try {
+        // Get AI response
+        const aiResponse = await chat(pendingMessage);
+        
+        // Add AI response to chat history
+        setResponses(prev => [
+          ...prev, 
+          {
+            type: 'assistant',
+            content: aiResponse.text,
+            codeBlocks: aiResponse.codeBlocks || [],
+            timestamp: Date.now()
+          }
+        ]);
+      } catch (error) {
+        console.error('Error sending pending message:', error);
+        setResponses(prev => [
+          ...prev, 
+          {
+            type: 'error',
+            content: `Failed to send message: ${error.message}`,
+            timestamp: Date.now()
+          }
+        ]);
+      }
+    }
+  };
+  
+  // Key press handler for the input field
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+  
+  // Handle sending a chat message
+  const handleSendMessage = async () => {
+    // Don't send empty messages
+    if (!prompt.trim()) return;
+
+    // Add user message to responses
+    const userMessage = {
+      role: 'user',
+      content: prompt,
+      timestamp: Date.now(),
+    };
+
+    setResponses(prevResponses => [...prevResponses, userMessage]);
+    setPrompt(''); // Clear input field
+    
+    // If we're offline, add message to pending queue
+    if (offlineMode) {
+      offlinePendingMessages.current.push(userMessage);
+      // Save pending messages with fallback storage options
+      try {
+        localStorage.setItem('offlinePendingMessages', JSON.stringify(offlinePendingMessages.current));
+      } catch (e) {
+        console.warn('Could not save pending messages to localStorage:', e);
+      }
+      
+      // Add system message to inform user with more specific information
+      setResponses(prevResponses => [
+        ...prevResponses, 
+        { 
+          role: 'system', 
+          content: chatSettings.preferLocalModels ? 
+            `You are offline. Attempting to use local AI model (${selectedModel?.name || 'CodeLlama'})...` : 
+            `You are offline. Message queued for delivery when connection is restored.`,
+          timestamp: Date.now(),
+          isOfflineMode: true
+        }
+      ]);
+      
+      // If local models are preferred when offline, try using them directly
+      if (chatSettings.preferLocalModels) {
+        try {
+          setIsLoading(true);
+          
+          // Prepare chat history for local model
+          const history = responses.map(response => ({
+            role: response.role,
+            content: response.content,
+          }));
+          
+          // Force offline mode for model selection
+          const localModelInfo = await selectAIModel(
+            chatSettings,
+            true, // Force offline mode
+            defaultModels
+          );
+          
+          if (localModelInfo.error) {
+            throw new Error(localModelInfo.error);
+          }
+          
+          // Use our chat utility with the local model
+          // Fix: Pass the selected local model info to the chat function
+          const response = await chat(prompt, history, chatSettings, true, localModelInfo.selectedModel);
+          
+          // Add response to chat history with visual indicators for offline local model
+          const responseMessage = {
+            role: 'assistant',
+            content: response.content || 'No response received',
+            timestamp: Date.now(),
+            // Include model info
+            modelId: response.modelId || localModelInfo.selectedModel.id,
+            modelName: response.modelName || localModelInfo.selectedModel.name,
+            provider: response.provider || localModelInfo.selectedModel.provider,
+            // Include any code blocks or suggestions
+            codeBlocks: response.codeBlocks || [],
+            // Add visual indicators for offline local model usage
+            isOfflineLocalModel: true
+          };
+          
+          setResponses(prevResponses => [...prevResponses, responseMessage]);
+        } catch (localError) {
+          console.error('Error using local model:', localError);
+          setResponses(prevResponses => [
+            ...prevResponses, 
+            { 
+              role: 'system', 
+              content: `Failed to use local model: ${localError.message}. Your message will be sent when you reconnect.`,
+              timestamp: Date.now(),
+              isError: true
+            }
+          ]);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // Prepare chat history for API
+      const history = responses.map(response => ({
+        role: response.role,
+        content: response.content,
+      }));
+
+      // Use our enhanced chat utility with settings and selected model
+      const response = await chat(prompt, history, chatSettings, offlineMode, selectedModel);
+
+      // Add API response to chat history with model information
+      const responseMessage = {
+        role: 'assistant',
+        content: response.content || 'No response received',
+        timestamp: Date.now(),
+        // Include model information
+        modelId: response.modelId,
+        modelName: response.modelName,
+        provider: response.provider,
+        // If this was a consensus result, include that info
+        consensus: response.consensus,
+        // Include any code blocks or suggestions
+        codeBlocks: response.codeBlocks || [],
+      };
+
+      setResponses(prevResponses => [...prevResponses, responseMessage]);
+      
+      // If this response contains code blocks and auto-apply is enabled
+      if (response.codeBlocks?.length > 0 && chatSettings.autoApplyCode && 
+          !chatSettings.confirmBeforeApplying && codeIntegration?.applyCode) {
+        // Automatically apply code changes
+        response.codeBlocks.forEach(async (block) => {
+          if (block.language && block.code) {
+            try {
+              await codeIntegration.applyCode(block.code, block.language, block.filename);
+              // Add success message
+              setResponses(prevResponses => [
+                ...prevResponses,
+                {
+                  role: 'system',
+                  content: `Automatically applied ${block.language} code${block.filename ? ` to ${block.filename}` : ''}.`,
+                  timestamp: Date.now()
+                }
+              ]);
+            } catch (error) {
+              console.error('Error auto-applying code:', error);
+              setResponses(prevResponses => [
+                ...prevResponses,
+                {
+                  role: 'system',
+                  content: `Error auto-applying code: ${error.message}`,
+                  timestamp: Date.now(),
+                  isError: true
+                }
+              ]);
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+
+      // Add error message to chat
+      const errorMessage = {
+        role: 'system',
+        content: `Error: ${error.message || 'Unknown error occurred'}. ${offlineMode ? 'Your message will be sent when you reconnect.' : ''}`,
+        timestamp: Date.now(),
+        isError: true,
+      };
+
+      setResponses(prevResponses => [...prevResponses, errorMessage]);
+
+      // If this might be due to being offline, check API health
+      if (!offlineMode) {
+        checkChatApiStatus();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle copying code to clipboard
+  const handleCopyCode = (code) => {
+    navigator.clipboard.writeText(code)
+      .then(() => {
+        console.log('Code copied to clipboard');
+      })
+      .catch(err => {
+        console.error('Failed to copy code:', err);
+      });
+  };
+  
+  // Handle applying code to editor
+  const handleApplyCode = (code, language) => {
+    if (codeIntegration && codeIntegration.insert) {
+      const result = codeIntegration.insert(code, language);
+      if (result && result.requiresConfirmation) {
+        setPendingCodeAction({ code, language });
+      }
+    }
+  };
+  
+  // Handle appending code to editor
+  const handleAppendCode = (code, language) => {
+    if (codeIntegration && codeIntegration.append) {
+      const result = codeIntegration.append(code, language);
+      if (result && result.requiresConfirmation) {
+        setPendingCodeAction({ action: 'append', code, language });
+      }
+    }
+  };
+  
+  // Handle running code
+  const handleRunCode = async (code, language) => {
+    if (codeIntegration && codeIntegration.execute) {
+      const result = await codeIntegration.execute(code, language);
+      if (result && result.requiresConfirmation) {
+        setPendingCodeAction({ action: 'execute', code, language });
+        return;
+      }
+      
+      // Add the execution result to the chat
+      if (result) {
+        const resultMessage = {
+          type: 'system',
+          content: `Execution result: ${result.success ? 'Success' : 'Error'}\n${result.result || result.error || ''}`,
+          timestamp: Date.now()
+        };
+        setResponses(prev => [...prev, resultMessage]);
+      }
+    }
+  };
+  
+  // Handle accepting code changes
+  const handleAcceptCode = () => {
+    if (!pendingCodeAction) return;
+    
+    const { action, code, language } = pendingCodeAction;
+    
+    if (action === 'execute') {
+      codeIntegration.execute(code, language);
+    } else if (action === 'append') {
+      codeIntegration.append(code, language);
+    } else {
+      codeIntegration.insert(code, language);
+    }
+    
+    setPendingCodeAction(null);
+  };
+  
+  // Handle rejecting code changes
+  const handleRejectCode = () => {
+    // Simply clear the pending action
+    setPendingCodeAction(null);
+  };
+  
+  // Handle updating settings with persistence
+  const handleSettingsUpdate = (newSettings) => {
+    // Update local state
+    const updatedSettings = { ...chatSettings, ...newSettings };
+    setChatSettings(updatedSettings);
+    
+    // If parent component provided onUpdateSettings handler, call it
+    if (onUpdateSettings) {
+      onUpdateSettings(updatedSettings);
+    }
+    
+    // Save settings with multi-tiered persistence
+    saveUserSettings(updatedSettings);
+
+    // Check if API endpoint changed, if so run health check
+    if ('apiEndpoint' in newSettings && newSettings.apiEndpoint !== chatSettings.apiEndpoint) {
+      setTimeout(() => checkChatApiStatus(), 300);
+    }
+    
+    // If AI model settings changed, update selected model
+    if (
+      'activeModel' in newSettings ||
+      'activeProvider' in newSettings ||
+      'useFallbackModels' in newSettings ||
+      'preferLocalModels' in newSettings ||
+      'consensus' in newSettings
+    ) {
+      // Select appropriate model based on new settings
+      selectAIModel(updatedSettings, offlineMode, defaultModels)
+        .then(modelInfo => {
+          setSelectedModel(modelInfo);
+          console.log('Updated selected model:', modelInfo);
+        })
+        .catch(error => {
+          console.error('Error updating selected model:', error);
+        });
+    }
+  };
+
+  // Focus input when component becomes visible
+  useEffect(() => {
+    if (inputRef.current) {
+      setTimeout(() => {
+        inputRef.current.focus();
+      }, 300);
+    }
+  }, []);
+
+  return (
+    <div className={`chat-panel ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+      <div className="chat-header">
+        <div className="chat-title">
+          <h3>Chat Assistant</h3>
+          <div className={`chat-status ${apiStatus.status}`}>
+            <span className="status-indicator"></span>
+            <span className="status-text">
+              {apiStatus.status === 'online' ? 'Online' : 
+               apiStatus.status === 'offline' ? 'Offline' : 'Checking...'}
+            </span>
+          </div>
+          
+          {selectedModel && (
+            <div className="model-info">
+              <span className="model-name" title={`Provider: ${selectedModel.provider}`}>
+                {selectedModel.name || selectedModel.id}
+              </span>
+              {selectedModel.consensus && (
+                <span className="consensus-badge" title="Using consensus from multiple models">
+                  Consensus
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Offline mode message and controls */}
+        {offlineMode && (
+          <div className="offline-message">
+            <span>
+              You're currently working offline. 
+              {chatSettings?.preferLocalModels ? 
+                `Attempting to use local AI model (${selectedModel?.displayName || 'Local Model'})...` : 
+                'Messages will be sent when connection is restored.'}
+            </span>
+            {offlinePendingMessages.current.length > 0 && (
+              <div className="pending-messages-count">
+                Pending messages: {offlinePendingMessages.current.length}
+              </div>
+            )}
+            <div className="force-online-controls">
+              <button 
+                className={`force-online-button ${forceOnlineMode ? 'active' : ''}`}
+                onClick={() => {
+                  // Toggle force online mode
+                  const newState = !forceOnlineMode;
+                  setForceOnlineMode(newState);
+                  
+                  if (newState) {
+                    // Immediately run check with force mode enabled
+                    checkChatApiStatus();
+                    
+                    // Add system message
+                    setResponses(prev => [
+                      ...prev,
+                      { 
+                        type: 'system', 
+                        content: 'Force Online mode enabled. Attempting to reconnect to API...',
+                        timestamp: Date.now()
+                      }
+                    ]);
+                  } else {
+                    // Add system message
+                    setResponses(prev => [
+                      ...prev,
+                      { 
+                        type: 'system', 
+                        content: 'Force Online mode disabled. Reverting to automatic connectivity detection.',
+                        timestamp: Date.now()
+                      }
+                    ]);
+                    // Run normal check
+                    checkChatApiStatus();
+                  }
+                }}
+              >
+                {forceOnlineMode ? 'Disable Force Online Mode' : 'Try Force Online Mode'}
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="chat-controls">
+          <button 
+            className="settings-button" 
+            onClick={() => setShowSettings(!showSettings)}
+            aria-label="Chat Settings"
+          >
+            ⚙️
+          </button>
+        </div>
+      </div>
+      
+      {showSettings && (
+        <ChatSettings 
+          settings={chatSettings} 
+          onUpdateSettings={handleSettingsUpdate} 
+          isDarkMode={isDarkMode} 
+        />
+      )}
+      
+      {pendingCodeAction && (
+        <CodeConfirmation 
+          action={pendingCodeAction.action || 'insert'}
+          code={pendingCodeAction.code}
+          language={pendingCodeAction.language}
+          onAccept={handleAcceptCode}
+          onReject={handleRejectCode}
+          isDarkMode={isDarkMode}
+        />
+      )}
+      
+      <div 
+        className="chat-history" 
+        ref={chatHistoryRef}
+      >
+        {responses.map((msg, index) => (
+          <div key={index} className={`chat-message ${msg.type} ${msg.isOfflineMode ? 'offline-mode' : ''} ${msg.isOfflineLocalModel ? 'offline-local-model' : ''} ${msg.isError ? 'error' : ''}`}>
+            <div className="message-header">
+              <strong>
+                {msg.type === 'user' ? 'You' : 
+                 msg.type === 'assistant' ? 
+                   (msg.isOfflineLocalModel ? `Assistant (${msg.modelName || 'Local'})` : 'Assistant') : 
+                   'System'}
+              </strong>
+              <span className="message-time">
+                {new Date(msg.timestamp).toLocaleTimeString()}
+                {msg.isOfflineLocalModel && <span className="offline-badge" title="Using local model while offline">Offline</span>}
+              </span>
+            </div>
+            <div className="message-content">
+              {msg.content}
+            </div>
+            {msg.type === 'assistant' && msg.codeBlocks && msg.codeBlocks.length > 0 && (
+              <div className="code-blocks">
+                {msg.codeBlocks.map((codeBlock, idx) => (
+                  <div key={idx} className="code-block">
+                    <div className="code-header">
+                      <span>{codeBlock.language || 'Code'}</span>
+                      <div className="code-actions">
+                        <button 
+                          onClick={() => handleCopyCode(codeBlock.code)}
+                          className="code-action-btn"
+                        >
+                          Copy
+                        </button>
+                        <button 
+                          onClick={() => handleApplyCode(codeBlock.code, codeBlock.language)}
+                          className="code-action-btn"
+                        >
+                          Apply
+                        </button>
+                        <button 
+                          onClick={() => handleAppendCode(codeBlock.code, codeBlock.language)}
+                          className="code-action-btn"
+                        >
+                          Append
+                        </button>
+                        <button 
+                          onClick={() => handleRunCode(codeBlock.code, codeBlock.language)}
+                          className="code-action-btn"
+                        >
+                          Run
+                        </button>
+                      </div>
+                    </div>
+                    <pre className="code-content">
+                      <code>{codeBlock.code}</code>
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      
+      <div className="chat-input-container">
+        <input 
+          ref={inputRef}
+          type="text" 
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Ask a question about your code..." 
+          disabled={isLoading}
+          className="chat-input"
+        />
+        <button 
+          onClick={handleSendMessage}
+          disabled={isLoading || !prompt.trim()}
+          className={`send-button ${isLoading || !prompt.trim() ? 'disabled' : ''}`}
+        >
+          {isLoading ? 'Sending...' : 'Send'}
+        </button>
+      </div>
+      
+      {offlineMode && (
+        <div className="offline-notice">
+          <p>You're currently working offline. Messages will be sent when connection is restored.</p>
+          <p>Pending messages: {offlinePendingMessages.current.length}</p>
+        </div>
+      )}
+    </div>
+  );
+}
