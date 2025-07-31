@@ -69,10 +69,12 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0'
   },
-  // Resolve monaco-editor to ESM version
+  // Resolve path aliases
   resolve: {
     alias: {
       'monaco-editor': 'monaco-editor/esm/vs/editor/editor.api.js',
+      // Add @ alias to point to src directory
+      '@': '/src'
     }
   }
 });

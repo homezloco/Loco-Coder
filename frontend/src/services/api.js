@@ -1,22 +1,121 @@
-// Import constants and AI service
-import { TOKEN_STORAGE_KEY } from '../api/modules/config/constants.js';
+// Import configuration and services
+import { API_BASE_URL, FALLBACK_URLS, TOKEN_KEYS } from './config';
 import createAiService from '../api/modules/ai.js';
 
-// Base API URL - prioritize localhost first since it's working
-const API_BASE_URL = 'http://localhost:8000';
+// Debug configuration
+console.group('[API] Initializing API Service');
+console.log('Base URL:', API_BASE_URL);
+console.log('Fallback URLs:', FALLBACK_URLS);
+console.log('Token Configuration:', TOKEN_KEYS);
+console.groupEnd();
 
-// Fallback URLs for when the primary URL fails
-const FALLBACK_URLS = [
-  '/api',                      // Vite proxy
-  'http://127.0.0.1:8000',    // Alternative localhost
-  'http://172.28.112.1:8000'  // WSL host IP
-];
-
-// Store the auth token in memory
-let authToken = '';
+// Token management
+let authToken = null;
+let refreshToken = null;
+let tokenExpiration = null;
+let isRefreshing = false;
+let refreshSubscribers = [];
 
 // Track last token check time to prevent excessive logging
 let lastTokenCheck = 0;
+
+// Track current URL being used
+let currentBaseUrl = API_BASE_URL;
+let currentUrlIndex = 0;
+
+/**
+ * Get the current base URL, cycling through fallbacks if needed
+ */
+const getCurrentBaseUrl = () => {
+  return currentBaseUrl;
+};
+
+/**
+ * Try the next fallback URL
+ */
+const tryNextFallbackUrl = () => {
+  if (FALLBACK_URLS.length === 0) return false;
+  
+  currentUrlIndex = (currentUrlIndex + 1) % FALLBACK_URLS.length;
+  currentBaseUrl = FALLBACK_URLS[currentUrlIndex];
+  
+  console.warn(`[API] Trying fallback URL: ${currentBaseUrl}`);
+  return true;
+};
+
+/**
+ * Check if a token is expired or about to expire
+ */
+const isTokenExpired = (token, threshold = TOKEN_KEYS.refreshThreshold) => {
+  if (!tokenExpiration) return true;
+  
+  const now = Math.floor(Date.now() / 1000);
+  const timeUntilExpiry = tokenExpiration - now;
+  
+  return timeUntilExpiry < threshold;
+};
+
+/**
+ * Store token information
+ */
+const storeToken = (token, refreshTokenValue = null, expiresIn = null) => {
+  if (!token) return;
+  
+  authToken = token;
+  
+  // Set token expiration if provided
+  if (expiresIn) {
+    tokenExpiration = Math.floor(Date.now() / 1000) + expiresIn;
+  }
+  
+  // Store refresh token if provided
+  if (refreshTokenValue) {
+    refreshToken = refreshTokenValue;
+    try {
+      localStorage.setItem(TOKEN_KEYS.refreshKey, refreshTokenValue);
+    } catch (e) {
+      console.warn('Failed to store refresh token in localStorage:', e);
+    }
+  }
+  
+  // Store token in the appropriate storage
+  try {
+    if (TOKEN_KEYS.storageType === 'localStorage') {
+      localStorage.setItem(TOKEN_KEYS.storageKey, token);
+      if (expiresIn) {
+        localStorage.setItem(`${TOKEN_KEYS.storageKey}_expires`, tokenExpiration);
+      }
+    } else if (TOKEN_KEYS.storageType === 'sessionStorage') {
+      sessionStorage.setItem(TOKEN_KEYS.storageKey, token);
+      if (expiresIn) {
+        sessionStorage.setItem(`${TOKEN_KEYS.storageKey}_expires`, tokenExpiration);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to store token:', e);
+  }
+};
+
+/**
+ * Clear all authentication data
+ */
+const clearAuthData = () => {
+  authToken = null;
+  refreshToken = null;
+  tokenExpiration = null;
+  
+  // Clear from all storage locations
+  try {
+    localStorage.removeItem(TOKEN_KEYS.storageKey);
+    localStorage.removeItem(`${TOKEN_KEYS.storageKey}_expires`);
+    localStorage.removeItem(TOKEN_KEYS.refreshKey);
+    
+    sessionStorage.removeItem(TOKEN_KEYS.storageKey);
+    sessionStorage.removeItem(`${TOKEN_KEYS.storageKey}_expires`);
+  } catch (e) {
+    console.warn('Failed to clear auth data:', e);
+  }
+};
 
 // Initialize auth token from available sources
 async function initAuthToken() {

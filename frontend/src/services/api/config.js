@@ -1,16 +1,34 @@
 // Get API configuration from environment variables with fallbacks
 const getApiConfig = () => {
-  // Default base URL - use relative URL for Vite proxy
-  const defaultBaseUrl = '/api';
+  // Debug environment variables
+  console.log('Environment Variables:', {
+    VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+    VITE_API_FALLBACK_URLS: import.meta.env.VITE_API_FALLBACK_URLS,
+    NODE_ENV: import.meta.env.MODE,
+    PROD: import.meta.env.PROD,
+    DEV: import.meta.env.DEV
+  });
+
+  // Default base URL - use relative URL for Vite proxy in production
+  const defaultBaseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '/api';
   
   // Get base URL from environment or use default
   const baseUrl = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
   
-  // Get fallback URLs from environment or use defaults
-  let fallbackUrls = [
+  // Default fallback URLs for different environments
+  const defaultFallbackUrls = [
     'http://localhost:8000',
-    'http://127.0.0.1:8000'
+    'http://127.0.0.1:8000',
+    'http://0.0.0.0:8000',
+    'http://[::1]:8000',
+    'http://localhost:5173', // Vite dev server
+    'http://127.0.0.1:5173',
+    'https://localhost:8000',
+    'https://127.0.0.1:8000'
   ];
+
+  // Get fallback URLs from environment or use defaults
+  let fallbackUrls = [...defaultFallbackUrls];
   
   try {
     if (import.meta.env.VITE_API_FALLBACK_URLS) {
@@ -26,7 +44,11 @@ const getApiConfig = () => {
   } catch (e) {
     console.warn('Failed to parse VITE_API_FALLBACK_URLS, using default fallback URLs', e);
   }
+
+  // Remove duplicates and empty strings
+  fallbackUrls = [...new Set(fallbackUrls.filter(url => url && typeof url === 'string'))];
   
+  console.log('API Configuration:', { baseUrl, fallbackUrls });
   return { baseUrl, fallbackUrls };
 };
 
@@ -53,12 +75,49 @@ export const ENDPOINTS = {
 };
 
 // Get token configuration from environment variables with fallbacks
-const getTokenConfig = () => ({
-  LOCAL_STORAGE: import.meta.env.VITE_TOKEN_STORAGE_KEY || 'token',
-  SESSION_STORAGE: import.meta.env.VITE_TOKEN_SESSION_KEY || 'token',
-  COOKIE: import.meta.env.VITE_TOKEN_COOKIE_KEY || 'token',
-  HEADER: import.meta.env.VITE_TOKEN_HEADER || 'Authorization'
-});
+const getTokenConfig = () => {
+  // Debug token config
+  console.log('Token Configuration Environment:', {
+    VITE_TOKEN_STORAGE_KEY: import.meta.env.VITE_TOKEN_STORAGE_KEY,
+    VITE_TOKEN_REFRESH_KEY: import.meta.env.VITE_TOKEN_REFRESH_KEY,
+    VITE_TOKEN_EXPIRES_IN: import.meta.env.VITE_TOKEN_EXPIRES_IN
+  });
+
+  // Default token configuration
+  const defaultConfig = {
+    storageKey: 'auth_token',
+    refreshKey: 'refresh_token',
+    expiresIn: 3600 * 24 * 7, // 1 week by default
+    storageType: 'localStorage', // 'localStorage', 'sessionStorage', or 'memory'
+    autoRefresh: true,
+    refreshThreshold: 300, // 5 minutes before token expires
+    cookieOptions: {
+      path: '/',
+      secure: window.location.protocol === 'https:',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7 // 1 week
+    }
+  };
+
+  // Get token config from environment variables with fallbacks
+  const config = {
+    storageKey: import.meta.env.VITE_TOKEN_STORAGE_KEY || defaultConfig.storageKey,
+    refreshKey: import.meta.env.VITE_TOKEN_REFRESH_KEY || defaultConfig.refreshKey,
+    expiresIn: parseInt(import.meta.env.VITE_TOKEN_EXPIRES_IN, 10) || defaultConfig.expiresIn,
+    storageType: import.meta.env.VITE_TOKEN_STORAGE_TYPE || defaultConfig.storageType,
+    autoRefresh: import.meta.env.VITE_TOKEN_AUTO_REFRESH 
+      ? import.meta.env.VITE_TOKEN_AUTO_REFRESH === 'true' 
+      : defaultConfig.autoRefresh,
+    refreshThreshold: parseInt(import.meta.env.VITE_TOKEN_REFRESH_THRESHOLD, 10) || defaultConfig.refreshThreshold,
+    cookieOptions: {
+      ...defaultConfig.cookieOptions,
+      secure: window.location.protocol === 'https:'
+    }
+  };
+
+  console.log('Token Configuration:', config);
+  return config;
+};
 
 // Get cache configuration from environment variables with fallbacks
 const getCacheConfig = () => ({

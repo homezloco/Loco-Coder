@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
-import { MobileMenu, DesktopMenu, HambumbergerButton } from './menu';
-import { useAuth } from '../../contexts/NewAuthContext';
-import { useApi } from '../../contexts/NewApiContext';
+import { MobileMenu, DesktopMenu, HamburgerButton } from './menu';
+import { useAuth } from "@/contexts/NewAuthContext";
+import { useApi } from '@/contexts/NewApiContext';
 import './UnifiedMenu.css';
 
 /**
@@ -258,6 +258,7 @@ const UnifiedMenu = ({
       )}
     </div>
   );
+};
 
 UnifiedMenu.propTypes = {
   onShowProjects: PropTypes.func,
