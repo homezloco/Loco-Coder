@@ -32,7 +32,7 @@ export const ProjectProvider = ({ children }) => {
   }, []);
 
   // Clean up old projects to free up space
-  const cleanupOldProjects = useCallback((targetSizeMB = 1) => {
+  const cleanupOldProjects = useCallback((targetSizeMB = 0.5) => { // More aggressive default target
     try {
       console.log(`[ProjectContext] Starting storage cleanup, target: ${targetSizeMB}MB`);
       
@@ -116,33 +116,94 @@ export const ProjectProvider = ({ children }) => {
           // If we're still over quota, try a more aggressive cleanup
           if (newUsage.percent > 90) {
             console.warn('[ProjectContext] Still over 90% quota, performing aggressive cleanup');
-            // Clear all project-related keys
-            const keysToKeep = ['auth_token', 'session_id', 'user_preferences'];
+            
+            // First, clear all non-essential keys
+            const keysToKeep = ['auth_token', 'session_id', 'user_preferences', 'projects_index'];
             const allKeys = Object.keys(localStorage);
             
+            // Clear non-project data first
             allKeys.forEach(key => {
-              if (!keysToKeep.includes(key) && !key.startsWith('p_') && key !== 'projects_index') {
+              if (!keysToKeep.includes(key) && !key.startsWith('p_')) {
                 try {
                   localStorage.removeItem(key);
+                  console.log(`[ProjectContext] Removed non-essential key: ${key}`);
                 } catch (e) {
                   console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
                 }
               }
             });
             
-            // If still over quota, clear everything except critical auth
+            // If still over quota, clear old projects
             const currentUsage = getStorageUsage();
             if (currentUsage.percent > 90) {
-              console.warn('[ProjectContext] Still over 90% after aggressive cleanup, clearing all projects');
-              allKeys.forEach(key => {
-                if (!keysToKeep.includes(key)) {
-                  try {
-                    localStorage.removeItem(key);
-                  } catch (e) {
-                    console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+              console.warn('[ProjectContext] Still over 90%, clearing old projects');
+              
+              // Get all project keys and sort by last accessed (oldest first)
+              const projectKeys = allKeys.filter(key => key.startsWith('p_'));
+              const projectData = projectKeys.map(key => ({
+                key,
+                size: localStorage.getItem(key)?.length * 2 || 0, // Approx size in bytes
+                lastAccessed: 0 // Will be updated from index if available
+              }));
+              
+              // Try to get last accessed times from index
+              try {
+                const index = JSON.parse(localStorage.getItem('projects_index') || '[]');
+                const indexMap = new Map(index.map(item => [item.id, item]));
+                
+                projectData.forEach(project => {
+                  const projectId = project.key.replace('p_', '');
+                  if (indexMap.has(projectId) && indexMap.get(projectId).lastAccessed) {
+                    project.lastAccessed = new Date(indexMap.get(projectId).lastAccessed).getTime();
                   }
+                });
+              } catch (e) {
+                console.warn('[ProjectContext] Failed to parse projects index:', e);
+              }
+              
+              // Sort by last accessed (oldest first), then by size (largest first)
+              projectData.sort((a, b) => {
+                if (a.lastAccessed !== b.lastAccessed) {
+                  return a.lastAccessed - b.lastAccessed;
                 }
+                return b.size - a.size;
               });
+              
+              // Remove projects until we're under target or can't remove any more
+              let removedCount = 0;
+              for (const project of projectData) {
+                try {
+                  localStorage.removeItem(project.key);
+                  removedCount++;
+                  console.log(`[ProjectContext] Removed project: ${project.key} (${(project.size/1024).toFixed(2)}KB)`);
+                  
+                  // Check if we're under quota
+                  const updatedUsage = getStorageUsage();
+                  if (updatedUsage.percent < 80) { // Leave 20% buffer
+                    console.log(`[ProjectContext] Storage now at ${updatedUsage.percent.toFixed(2)}%, stopping cleanup`);
+                    break;
+                  }
+                } catch (e) {
+                  console.warn(`[ProjectContext] Failed to remove project ${project.key}:`, e);
+                }
+              }
+              
+              console.log(`[ProjectContext] Removed ${removedCount} projects during cleanup`);
+              
+              // If still over quota after all that, clear everything except auth
+              const finalUsage = getStorageUsage();
+              if (finalUsage.percent > 90) {
+                console.warn('[ProjectContext] Still over 90% after project cleanup, clearing all non-essential data');
+                allKeys.forEach(key => {
+                  if (!keysToKeep.includes(key)) {
+                    try {
+                      localStorage.removeItem(key);
+                    } catch (e) {
+                      console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+                    }
+                  }
+                });
+              }
             }
             
             console.log('[ProjectContext] Aggressive cleanup completed');
@@ -166,6 +227,18 @@ export const ProjectProvider = ({ children }) => {
       }
     }
   }, [getStorageUsage]);
+
+  // Check if a project is too large for localStorage
+  const isProjectTooLarge = useCallback((project) => {
+    try {
+      const projectSize = JSON.stringify(project).length * 2; // Approx size in bytes
+      const maxSize = 5 * 1024 * 1024; // 5MB max per project
+      return projectSize > maxSize;
+    } catch (e) {
+      console.warn('[ProjectContext] Error calculating project size:', e);
+      return false;
+    }
+  }, []);
 
   // Save projects to localStorage efficiently with size limits and retries
   const saveProjectsToStorage = useCallback((projectsToSave, depth = 0) => {
@@ -196,8 +269,23 @@ export const ProjectProvider = ({ children }) => {
     for (const { project, size } of sortedProjects) {
       if (!project || !project.id) continue;
       
+      // Skip projects that are too large
+      if (isProjectTooLarge(project)) {
+        console.warn(`[ProjectContext] Project ${project.id} is too large (${(size/1024/1024).toFixed(2)}MB), skipping save`);
+        failedProjects.push(project.id);
+        continue;
+      }
+      
       const projectKey = `p_${project.id}`;
-      const projectData = JSON.stringify(project);
+      let projectData;
+      
+      try {
+        projectData = JSON.stringify(project);
+      } catch (e) {
+        console.error(`[ProjectContext] Failed to stringify project ${project.id}:`, e);
+        failedProjects.push(project.id);
+        continue;
+      }
       
       try {
         // Check if this would exceed quota

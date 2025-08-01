@@ -1,40 +1,100 @@
 import { TOKEN_KEYS } from '../config';
 
+/**
+ * @typedef {Object} TokenInfo
+ * @property {string} token - The JWT token
+ * @property {number} [exp] - Optional expiration timestamp
+ */
+
 // Debug log
-console.log('Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
+console.log('[Auth] Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
 
 // In-memory token cache
-let authToken = null;
+let authToken = {
+  value: null,
+  expires: null
+};
+
+/**
+ * Parses a JWT token to extract its payload
+ * @param {string} token - The JWT token to parse
+ * @returns {Object|null} The decoded token payload or null if invalid
+ */
+const parseToken = (token) => {
+  if (!token) return null;
+  
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch (error) {
+    console.error('Error parsing token:', error);
+    return null;
+  }
+};
+
+/**
+ * Checks if a token is expired
+ * @param {number} exp - Token expiration timestamp (in seconds)
+ * @returns {boolean} True if token is expired or invalid
+ */
+const isTokenExpired = (exp) => {
+  if (!exp) return true;
+  return Date.now() >= exp * 1000;
+};
 
 /**
  * Stores the authentication token in memory and persistent storage
  * @param {string} token - The JWT token to store
- * @param {boolean} remember - Whether to store in localStorage (true) or sessionStorage (false)
+ * @param {boolean} [remember=true] - Whether to persist in localStorage (true) or sessionStorage (false)
+ * @returns {boolean} True if storage was successful, false otherwise
  */
 export const setAuthToken = (token, remember = true) => {
   try {
-    authToken = token;
+    if (!token) {
+      return clearAuthToken();
+    }
+
+    const decoded = parseToken(token);
+    if (!decoded) {
+      console.error('Invalid token format');
+      return false;
+    }
+
+    const expiresAt = decoded.exp ? new Date(decoded.exp * 1000) : null;
     
-    if (token) {
-      const storage = remember ? localStorage : sessionStorage;
+    // Update in-memory cache
+    authToken = {
+      value: token,
+      expires: expiresAt?.getTime() || null
+    };
+    
+    // Store in appropriate storage
+    const storage = remember ? localStorage : sessionStorage;
+    
+    try {
       storage.setItem(TOKEN_KEYS.LOCAL_STORAGE, token);
       
-      // Also set in session storage for consistency
+      // For session-only tokens, store in sessionStorage as well
       if (!remember) {
         sessionStorage.setItem(TOKEN_KEYS.SESSION_STORAGE, token);
       }
       
-      // Set cookie with 1 day expiration
-      const date = new Date();
-      date.setTime(date.getTime() + (24 * 60 * 60 * 1000));
-      const expires = "; expires=" + date.toUTCString();
-      document.cookie = `${TOKEN_KEYS.COOKIE}=${token}${expires}; path=/; SameSite=Lax`;
-    } else {
-      // Clear all tokens if token is null/undefined/empty
+      // Set HTTP-only cookie for API requests
+      if (typeof document !== 'undefined') {
+        const expires = expiresAt ? `; expires=${expiresAt.toUTCString()}` : '';
+        document.cookie = `${TOKEN_KEYS.COOKIE}=${token}${expires}; path=/; SameSite=Lax${remember ? '; Secure' : ''}`;
+      }
+      
+      return true;
+    } catch (storageError) {
+      console.error('Error storing token in storage:', storageError);
+      // Clear partial storage on error
       clearAuthToken();
+      return false;
     }
-    
-    return true;
   } catch (error) {
     console.error('Error setting auth token:', error);
     return false;
@@ -43,24 +103,36 @@ export const setAuthToken = (token, remember = true) => {
 
 /**
  * Clears all authentication tokens from all storage locations
+ * @returns {boolean} True if all tokens were cleared successfully
  */
-console.log('clearAuthToken called - start');
-
-export const clearAuthToken = () => {
-  console.log('clearAuthToken executing - clearing tokens');
+const clearAuthToken = () => {
+  console.log('[Auth] Clearing authentication tokens');
+  
+  // Clear in-memory token
+  authToken = { value: null, expires: null };
+  
+  let success = true;
+  
   try {
-    authToken = null;
-    
     // Clear from all storage locations
-    localStorage.removeItem(TOKEN_KEYS.LOCAL_STORAGE);
-    sessionStorage.removeItem(TOKEN_KEYS.SESSION_STORAGE);
+    [localStorage, sessionStorage].forEach(storage => {
+      try {
+        storage.removeItem(TOKEN_KEYS.LOCAL_STORAGE);
+        storage.removeItem(TOKEN_KEYS.SESSION_STORAGE);
+      } catch (error) {
+        console.error('Error clearing storage:', error);
+        success = false;
+      }
+    });
     
-    // Clear cookie by setting expiration in the past
-    document.cookie = `${TOKEN_KEYS.COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    // Clear cookie
+    if (typeof document !== 'undefined') {
+      document.cookie = `${TOKEN_KEYS.COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    }
     
-    return true;
+    return success;
   } catch (error) {
-    console.error('Error clearing auth token:', error);
+    console.error('Error in clearAuthToken:', error);
     return false;
   }
 };
@@ -69,32 +141,56 @@ export const clearAuthToken = () => {
  * Retrieves the current authentication token with multi-layered fallback
  * @returns {string} The authentication token or empty string if not found
  */
-export const getAuthToken = () => {
+const getAuthToken = () => {
   try {
-    // 1. Check in-memory token first (fastest)
-    if (authToken) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[API] Using in-memory token');
+    // Check in-memory cache first
+    if (authToken?.value) {
+      // Verify token is not expired
+      if (!authToken.expires || authToken.expires > Date.now()) {
+        return authToken.value;
       }
-      return authToken;
+      console.log('[Auth] Cached token expired, checking other sources');
     }
 
-    // 2. Check all possible token locations
+    // Define all possible token sources with validation
     const tokenSources = [
       { 
         name: 'localStorage', 
-        get: () => localStorage.getItem(TOKEN_KEYS.LOCAL_STORAGE)
+        get: () => {
+          try {
+            return localStorage.getItem(TOKEN_KEYS.LOCAL_STORAGE);
+          } catch (error) {
+            console.warn('Error accessing localStorage:', error);
+            return null;
+          }
+        },
+        validate: (token) => token && token.length > 10 // Basic validation
       },
       { 
         name: 'sessionStorage', 
-        get: () => sessionStorage.getItem(TOKEN_KEYS.SESSION_STORAGE)
-      },
-      { 
-        name: 'cookie', 
         get: () => {
-          const match = document.cookie.match(new RegExp(`(^| )${TOKEN_KEYS.COOKIE}=([^;]+)`));
-          return match ? match[2] : null;
-        }
+          try {
+            return sessionStorage.getItem(TOKEN_KEYS.SESSION_STORAGE);
+          } catch (error) {
+            console.warn('Error accessing sessionStorage:', error);
+            return null;
+          }
+        },
+        validate: (token) => token && token.length > 10
+      },
+      {
+        name: 'cookie',
+        get: () => {
+          if (typeof document === 'undefined') return null;
+          try {
+            const match = document.cookie.match(new RegExp(`(^| )${TOKEN_KEYS.COOKIE}=([^;]+)`));
+            return match ? decodeURIComponent(match[2]) : null;
+          } catch (error) {
+            console.warn('Error reading cookie:', error);
+            return null;
+          }
+        },
+        validate: (token) => token && token.length > 10
       }
     ];
 
@@ -102,34 +198,32 @@ export const getAuthToken = () => {
     for (const source of tokenSources) {
       try {
         const token = source.get();
-        if (token && typeof token === 'string' && token.split('.').length === 3) {
-          // Cache the token in memory for future use
-          authToken = token;
-          
-          // Also ensure it's in localStorage for persistence
-          if (source.name !== 'localStorage') {
-            localStorage.setItem(TOKEN_KEYS.LOCAL_STORAGE, token);
+        if (token && source.validate(token)) {
+          // Parse token to get expiration
+          const decoded = parseToken(token);
+          if (decoded && !isTokenExpired(decoded.exp)) {
+            // Cache the validated token in memory
+            const expires = decoded.exp ? new Date(decoded.exp * 1000) : null;
+            authToken = {
+              value: token,
+              expires: expires?.getTime() || null
+            };
+            
+            console.log(`[Auth] Using token from ${source.name}`);
+            return token;
           }
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[API] Retrieved token from ${source.name}`);
-          }
-          
-          return token;
+          console.log(`[Auth] Token from ${source.name} is invalid or expired`);
         }
       } catch (error) {
-        console.warn(`[API] Error checking ${source.name}:`, error);
+        console.warn(`Error getting token from ${source.name}:`, error);
       }
     }
     
-    // No valid token found
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[API] No valid authentication token found in any source');
-    }
-    
+    // No valid token found in any source
+    console.log('[Auth] No valid authentication token found');
     return '';
   } catch (error) {
-    console.error('Error getting auth token:', error);
+    console.error('Error in getAuthToken:', error);
     return '';
   }
 };
@@ -152,10 +246,22 @@ export const validateToken = async () => {
   }
 };
 
-// Explicitly export all methods
+// Export all public methods
 export {
   setAuthToken,
   clearAuthToken,
   getAuthToken,
-  validateToken
+  validateToken,
+  parseToken,
+  isTokenExpired
+};
+
+// For backward compatibility
+export default {
+  setAuthToken,
+  clearAuthToken,
+  getAuthToken,
+  validateToken,
+  parseToken,
+  isTokenExpired
 };

@@ -1,4 +1,6 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
+import api from '../services/api';
+import { useFeedback } from '../components/feedback/FeedbackContext';
 
 // Fallback auth object when context is not available
 const FALLBACK_AUTH = {
@@ -17,27 +19,9 @@ const FALLBACK_AUTH = {
     console.warn('Auth context not available - register called on fallback');
     throw new Error('Registration not available');
   },
-  loading: false
+  loading: false,
+  error: null
 };
-
-// This is a placeholder that will be replaced with the actual useAuth hook
-let useAuthImpl = () => FALLBACK_AUTH;
-
-// Try to import the actual useAuth hook if available
-const loadAuthHook = async () => {
-  try {
-    // Use dynamic import to avoid circular dependencies
-    const module = await import('../contexts/NewAuthContext');
-    if (module?.useAuth) {
-      useAuthImpl = module.useAuth;
-    }
-  } catch (error) {
-    console.warn('Failed to load auth context:', error);
-  }
-};
-
-// Load the auth hook when the module is imported
-loadAuthHook();
 
 /**
  * Custom hook to safely access the auth context with built-in fallback
@@ -46,39 +30,111 @@ loadAuthHook();
 export const useAuthContext = () => {
   const [auth, setAuth] = useState(FALLBACK_AUTH);
   const [loading, setLoading] = useState(true);
+  const [authModule, setAuthModule] = useState(null);
 
+  // Load the auth module dynamically to avoid circular dependencies
   useEffect(() => {
-    const setupAuth = async () => {
+    let isMounted = true;
+    
+    const loadAuthModule = async () => {
       try {
-        const authHook = useAuthImpl();
-        const authValue = typeof authHook === 'function' ? authHook() : authHook;
-        
-        // Ensure we always have the expected methods and properties
-        const normalizedAuth = {
-          isAuthenticated: !!authValue?.isAuthenticated,
-          user: authValue?.user || null,
-          token: authValue?.token || null,
-          login: authValue?.login || FALLBACK_AUTH.login,
-          logout: authValue?.logout || FALLBACK_AUTH.logout,
-          register: authValue?.register || FALLBACK_AUTH.register,
-          loading: authValue?.loading ?? false
-        };
-        
-        setAuth(normalizedAuth);
+        const module = await import('../contexts/NewAuthContext');
+        if (isMounted) {
+          setAuthModule(module);
+        }
       } catch (error) {
-        console.warn('Error initializing auth context:', error);
-        setAuth(FALLBACK_AUTH);
-      } finally {
-        setLoading(false);
+        console.warn('Failed to load auth context:', error);
+        if (isMounted) {
+          setAuth(FALLBACK_AUTH);
+          setLoading(false);
+        }
       }
     };
 
-    setupAuth();
+    loadAuthModule();
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const setupAuth = useCallback(async () => {
+    try {
+      console.log('[Auth] Initializing auth context...');
+      
+      // First, try to get any existing token from the API service
+      let token = await api.getAuthToken();
+      
+      // If no token in API service, check localStorage/sessionStorage directly
+      if (!token) {
+        const tokenKey = api.TOKEN_KEYS?.storageKey || 'auth_token';
+        token = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+        
+        if (token) {
+          console.log('[Auth] Found token in storage, setting in API service...');
+          await api.setAuthToken(token);
+        }
+      }
+      
+      // If we have a token, try to get user data
+      if (token) {
+        console.log('[Auth] Token found, fetching user data...');
+        try {
+          const userData = await api.auth.me();
+          console.log('[Auth] User data fetched successfully:', userData);
+          
+          setAuth({
+            user: userData,
+            token: token,
+            isAuthenticated: true,
+            loading: false,
+            error: null
+          });
+          return;
+        } catch (error) {
+          console.warn('[Auth] Failed to fetch user data:', error);
+          // Clear invalid token
+          await api.clearAuthToken();
+        }
+      }
+      
+      // If we get here, either no token or invalid token
+      console.log('[Auth] No valid token found, using fallback auth');
+      setAuth(FALLBACK_AUTH);
+      
+    } catch (error) {
+      console.error('[Auth] Error initializing auth context:', error);
+      setAuth({
+        ...FALLBACK_AUTH,
+        error: error.message || 'Failed to initialize authentication'
+      });
+    }
+  }, []);
+
+  // Once the auth module is loaded, initialize auth state on mount
+  useEffect(() => {
+    if (!authModule) return;
+    
+    console.log('[Auth] Setting up auth...');
+    setupAuth();
+    
+    // Listen for storage events to handle token changes across tabs
+    const handleStorageChange = async (e) => {
+      if (e.key === (api.TOKEN_KEYS?.storageKey || 'auth_token')) {
+        console.log('[Auth] Auth token changed in storage, revalidating...');
+        await setupAuth();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [authModule, setupAuth]);
 
   return useMemo(() => ({
     ...auth,
-    loading
+    loading: loading || auth.loading
   }), [auth, loading]);
 };
 

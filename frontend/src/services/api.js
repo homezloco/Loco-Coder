@@ -145,25 +145,105 @@ async function initAuthToken() {
     
     // Try to load token from storage based on configuration
     try {
-      let token = null;
-      let storedExpiration = null;
-      
-      // Try localStorage first if configured
-      if (TOKEN_KEYS.storageType === 'localStorage' && typeof localStorage !== 'undefined') {
-        token = localStorage.getItem(TOKEN_KEYS.storageKey);
-        const expires = localStorage.getItem(`${TOKEN_KEYS.storageKey}_expires`);
-        storedExpiration = expires ? parseInt(expires, 10) : null;
-        
-        if (token && storedExpiration) {
-          const now = Math.floor(Date.now() / 1000);
-          if (now >= storedExpiration) {
-            console.log('[API] Stored token has expired');
-            token = null;
-            localStorage.removeItem(TOKEN_KEYS.storageKey);
-            localStorage.removeItem(`${TOKEN_KEYS.storageKey}_expires`);
+      // Define token sources in order of preference
+      const tokenSources = [
+        {
+          name: 'localStorage',
+          get: () => localStorage.getItem(TOKEN_KEYS.storageKey),
+          getExpiry: () => localStorage.getItem(`${TOKEN_KEYS.storageKey}_expires`)
+        },
+        {
+          name: 'sessionStorage',
+          get: () => sessionStorage.getItem(TOKEN_KEYS.storageKey),
+          getExpiry: () => sessionStorage.getItem(`${TOKEN_KEYS.storageKey}_expires`)
+        },
+        {
+          name: 'cookie',
+          get: () => {
+            if (typeof document !== 'undefined') {
+              const match = document.cookie.match(new RegExp(`(^| )${TOKEN_KEYS.storageKey}=([^;]+)`));
+              return match ? decodeURIComponent(match[2]) : null;
+            }
+            return null;
+          },
+          getExpiry: () => null // Cookies handle expiry internally
+        }
+      ];
+
+      // Try each source in order
+      for (const source of tokenSources) {
+        try {
+          console.log(`[API] Checking token source: ${source.name}`);
+          const token = source.get();
+          
+          if (token && typeof token === 'string') {
+            // Check if token is expired
+            const expires = source.getExpiry ? source.getExpiry() : null;
+            const expirationTime = expires ? parseInt(expires, 10) : null;
+            
+            if (expirationTime) {
+              const now = Math.floor(Date.now() / 1000);
+              if (now >= expirationTime) {
+                console.log(`[API] Token in ${source.name} has expired`);
+                continue;
+              }
+            }
+            
+            // Validate token format (basic JWT check)
+            if (token.split('.').length === 3) {
+              console.log(`[API] Found valid JWT token in ${source.name}`);
+              authToken = token;
+              
+              // If we found a valid token, try to sync it to other storage locations
+              try {
+                // Only sync to localStorage if it's not the source and we have space
+                if (source.name !== 'localStorage' && typeof localStorage !== 'undefined') {
+                  try {
+                    localStorage.setItem(TOKEN_KEYS.storageKey, token);
+                    if (expirationTime) {
+                      localStorage.setItem(`${TOKEN_KEYS.storageKey}_expires`, expirationTime.toString());
+                    }
+                  } catch (e) {
+                    console.warn('[API] Could not sync token to localStorage:', e.message);
+                  }
+                }
+                
+                // Sync to sessionStorage
+                if (source.name !== 'sessionStorage' && typeof sessionStorage !== 'undefined') {
+                  try {
+                    sessionStorage.setItem(TOKEN_KEYS.storageKey, token);
+                    if (expirationTime) {
+                      sessionStorage.setItem(`${TOKEN_KEYS.storageKey}_expires`, expirationTime.toString());
+                    }
+                  } catch (e) {
+                    console.warn('[API] Could not sync token to sessionStorage:', e.message);
+                  }
+                }
+                
+                // Sync to cookies if not the source
+                if (source.name !== 'cookie' && typeof document !== 'undefined') {
+                  try {
+                    const cookieValue = `${TOKEN_KEYS.storageKey}=${encodeURIComponent(token)}; path=/; max-age=${TOKEN_KEYS.expiresIn || 604800}; samesite=strict${window.location.protocol === 'https:' ? '; secure' : ''}`;
+                    document.cookie = cookieValue;
+                  } catch (e) {
+                    console.warn('[API] Could not sync token to cookies:', e.message);
+                  }
+                }
+                
+                console.log('[API] Token initialized and synced across available storage');
+                return;
+              } catch (syncError) {
+                console.warn('[API] Error syncing token across storage locations, but continuing with found token:', syncError);
+                return;
+              }
+            }
           }
+        } catch (error) {
+          console.warn(`[API] Error checking ${source.name} for token:`, error);
         }
       }
+      
+      console.log('[API] No valid auth token found in any storage location');
     } catch (error) {
       console.error('[API] Error initializing token from storage:', error);
     }
@@ -713,6 +793,7 @@ function createFormData(data) {
   });
   return formData;
 }
+
 const api = {
   // Auth methods
   login: async function(username, password) {
@@ -816,7 +897,6 @@ const api = {
           // Verify token was stored correctly
           const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
           if (storedToken !== token) {
-// ... (rest of the code remains the same)
             console.error('[API] Token verification failed: stored token does not match');
           } else {
             console.log('[API] Token verified in localStorage');
@@ -1616,101 +1696,169 @@ const api = {
         console.log('[API] Using valid in-memory auth token');
         return authToken;
       }
+      
+      // If we're in the middle of initializing the token, wait for it to complete
+      if (tokenInitializationPromise) {
+        console.log('[API] Waiting for token initialization to complete...');
+        try {
+          await tokenInitializationPromise;
+          // Check again after initialization
+          if (authToken && !isTokenExpired(authToken)) {
+            console.log('[API] Using valid auth token after initialization');
+            return authToken;
+          }
+        } catch (initError) {
+          console.warn('[API] Error during token initialization:', initError);
+          // Continue with normal token retrieval if initialization fails
+        }
+      }
 
       // Get the token storage key from config
       const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
       
-      // Token sources array with proper formatting
+      // Define possible token sources in order of preference
       const tokenSources = [
         {
-          name: 'localStorage',
-          description: `localStorage.${tokenKey}`,
-          get: () => localStorage.getItem(tokenKey)
+          name: 'memory',
+          get: () => authToken
         },
         {
           name: 'sessionStorage',
-          description: `sessionStorage.${tokenKey}`,
-          get: () => sessionStorage.getItem(tokenKey)
-        },
-        { 
-          name: 'cookie',
-          description: 'document.cookie',
           get: () => {
-            if (typeof document !== 'undefined') {
-              const match = document.cookie.match(new RegExp(`(^| )${tokenKey}=([^;]+)`));
-              return match ? decodeURIComponent(match[2]) : null;
+            try {
+              return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(tokenKey) : null;
+            } catch (e) {
+              console.warn('[API] Error reading from sessionStorage:', e);
+              return null;
             }
-            return null;
+          }
+        },
+        {
+          name: 'localStorage',
+          get: () => {
+            try {
+              return typeof localStorage !== 'undefined' ? localStorage.getItem(tokenKey) : null;
+            } catch (e) {
+              console.warn('[API] Error reading from localStorage:', e);
+              return null;
+            }
+          }
+        },
+        {
+          name: 'cookies',
+          get: () => {
+            try {
+              if (typeof document === 'undefined') return null;
+              const match = document.cookie.match(new RegExp('(^| )' + tokenKey + '=([^;]+)'));
+              return match ? decodeURIComponent(match[2]) : null;
+            } catch (e) {
+              console.warn('[API] Error reading from cookies:', e);
+              return null;
+            }
           }
         }
       ];
 
       // Try each source in order
+      let foundToken = null;
+      
       for (const source of tokenSources) {
         try {
           console.log(`[API] Checking token source: ${source.name}`);
-          const token = source.get();
+          const token = await Promise.resolve(source.get());
           
+          // Basic JWT validation (3 parts separated by dots)
           if (token && typeof token === 'string' && token.split('.').length === 3) {
-            // Skip validation if explicitly requested (e.g., during login)
-            if (skipValidation) {
-              console.log(`[API] Found token in ${source.name} (validation skipped)`);
-              authToken = token;
-              return token;
-            }
-
-            // Check if token is expired
-            if (isTokenExpired(token)) {
-              console.warn(`[API] Token in ${source.name} is expired`);
-              continue;
-            }
-
-            console.log(`[API] Found valid JWT token in ${source.name}`);
-            
-            // Cache the token in memory for future use
-            authToken = token;
-            
-            // Validate the token with the server if we're online and validation is not skipped
-            if (navigator.onLine && !skipValidation) {
-              try {
-                const isValid = await validateToken(token);
-                if (!isValid) {
-                  console.warn('[API] Token validation failed');
-                  clearAuthToken();
-                  return null;
-                }
-                console.log('[API] Token validated successfully');
-              } catch (validationError) {
-                console.warn('[API] Error validating token:', validationError);
-                // Continue with the token even if validation fails (might be offline)
-              }
-            }
-            
-            // Ensure the token is in all storage locations for consistency
-            try {
-              // Only sync to storage if token is valid
-              if (!isTokenExpired(token)) {
-                localStorage.setItem(tokenKey, token);
-                sessionStorage.setItem(tokenKey, token);
-                document.cookie = `${tokenKey}=${encodeURIComponent(token)}; path=/; max-age=${TOKEN_KEYS.expiresIn || 604800}; samesite=strict${window.location.protocol === 'https:' ? '; secure' : ''}`;
-                console.log('[API] Synced token across all storage locations');
-              }
-            } catch (storageError) {
-              console.warn('[API] Error syncing token across storage locations:', storageError);
-            }
-            
-            console.log('[API] Returning valid auth token');
-            return token;
+            foundToken = token;
+            console.log(`[API] Found token in ${source.name}`);
+            break; // Found a token, stop checking other sources
           }
         } catch (error) {
           console.warn(`[API] Error checking ${source.name}:`, error);
         }
       }
       
-      console.log('[API] No valid auth token found in any source');
-      return null;
+      // If no token was found in any source
+      if (!foundToken) {
+        console.log('[API] No valid auth token found in any source');
+        return null;
+      }
+      
+      // Process the found token
+      // Skip validation if explicitly requested (e.g., during login)
+      if (skipValidation) {
+        console.log('[API] Using token without validation');
+        authToken = foundToken;
+        return foundToken;
+      }
+      
+      // Check if token is expired
+      if (isTokenExpired(foundToken)) {
+        console.warn('[API] Token is expired');
+        await clearAuthToken();
+        return null;
+      }
+      
+      console.log('[API] Found valid JWT token');
+      
+      // Cache the token in memory for future use
+      authToken = foundToken;
+      
+      // Validate the token with the server if we're online and validation is not skipped
+      if (navigator && navigator.onLine) {
+        try {
+          const isValid = await validateToken(foundToken);
+          if (!isValid) {
+            console.warn('[API] Token validation failed');
+            await clearAuthToken();
+            return null;
+          }
+          console.log('[API] Token validated successfully');
+        } catch (validationError) {
+          console.warn('[API] Error validating token:', validationError);
+          // Continue with the token even if validation fails (might be offline)
+        }
+      }
+      
+      // Ensure the token is in all storage locations for consistency
+      try {
+        // Only sync to storage if token is valid
+        if (!isTokenExpired(foundToken)) {
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(tokenKey, foundToken);
+            }
+          } catch (e) {
+            console.warn('[API] Failed to store token in localStorage:', e);
+          }
+          
+          try {
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem(tokenKey, foundToken);
+            }
+          } catch (e) {
+            console.warn('[API] Failed to store token in sessionStorage:', e);
+          }
+          
+          try {
+            if (typeof document !== 'undefined') {
+              document.cookie = `${tokenKey}=${encodeURIComponent(foundToken)}; path=/; max-age=${TOKEN_KEYS.expiresIn || 604800}; samesite=strict${window.location.protocol === 'https:' ? '; secure' : ''}`;
+            }
+          } catch (e) {
+            console.warn('[API] Failed to store token in cookies:', e);
+          }
+          
+          console.log('[API] Synced token across available storage locations');
+        }
+        
+        console.log('[API] Returning valid auth token');
+        return foundToken;
+      } catch (error) {
+        console.warn('[API] Error syncing token to storage:', error);
+        return foundToken; // Still return the token even if storage sync fails
+      }
     } catch (error) {
-      console.error('[API] Error in getAuthToken:', error);
+      console.error('[API] Error processing token:', error);
       return null;
     } finally {
       console.groupEnd();
@@ -1798,31 +1946,26 @@ const api = {
 };
 
 // Add AI service to the API client
-// The imported aiService is already an instance, so we can attach it directly
 api.ai = createAiService;
 
 // Add waitForAiService method to the API client
-api.waitForAiService = async () => {
-  if (api.ai && typeof api.ai.waitForAiService === 'function') {
-    return api.ai.waitForAiService();
+api.waitForAiService = async function() {
+  if (this.ai && this.ai.isInitialized) {
+    return this.ai;
   }
-  
-  // Fallback implementation if the method is not available on the AI service
+
   return new Promise((resolve, reject) => {
-    const check = () => {
-      if (api.ai) {
-        resolve(api.ai);
-      } else {
-        setTimeout(check, 100);
+    const checkInterval = setInterval(() => {
+      if (this.ai && this.ai.isInitialized) {
+        clearInterval(checkInterval);
+        resolve(this.ai);
       }
-    };
-    check();
-    
-    // Add a timeout
+    }, 100);
+
+    // Timeout after 5 seconds
     setTimeout(() => {
-      if (!api.ai) {
-        reject(new Error('Timeout waiting for AI service to initialize'));
-      }
+      clearInterval(checkInterval);
+      reject(new Error('AI service initialization timed out'));
     }, 5000);
   });
 };
@@ -1830,16 +1973,6 @@ api.waitForAiService = async () => {
 // Make the API client available globally for token management
 if (typeof window !== 'undefined') {
   window.api = api;
-  
-  // For debugging
-  window.__api = api;
-  
-  // Log AI service attachment
-  console.log('[API] AI service attached to API client:', {
-    hasAiService: !!api.ai,
-    aiMethods: api.ai ? Object.keys(api.ai) : []
-  });
 }
 
-export { api };
 export default api;
