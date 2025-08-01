@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react-hooks';
+import { renderHook, act } from '@testing-library/react';
 import { ProjectProvider, useProject } from '../NewProjectContext';
 import { AuthProvider } from '../NewAuthContext';
 import { ApiProvider } from '../NewApiContext';

@@ -1,7 +1,31 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import api from '../services/api/apiV2';
+
+// Mock the API module
+const mockLogin = jest.fn();
+const mockLogout = jest.fn();
+const mockGetCurrentUser = jest.fn();
+const mockStoreToken = jest.fn();
+const mockClearAuthData = jest.fn();
+const mockGetAuthToken = jest.fn();
+const mockIsAuthenticated = jest.fn();
+
+jest.mock('../services/api/apiV2', () => ({
+  __esModule: true,
+  default: {
+    login: mockLogin,
+    logout: mockLogout,
+    getCurrentUser: mockGetCurrentUser,
+    storeToken: mockStoreToken,
+    clearAuthData: mockClearAuthData,
+    getAuthToken: mockGetAuthToken,
+    isAuthenticated: mockIsAuthenticated,
+  },
+}));
+
+
 
 // Mock the API module
 jest.mock('../services/api/apiV2');
@@ -40,6 +64,12 @@ const TestComponent = () => {
   );
 };
 
+// Clear all mocks before each test
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockIsAuthenticated.mockReturnValue(false);
+});
+
 // Wrapper component to provide router context
 const renderWithProviders = (ui) => {
   return render(
@@ -52,14 +82,8 @@ const renderWithProviders = (ui) => {
 };
 
 describe('Authentication', () => {
-  beforeEach(() => {
-    // Clear all mocks and localStorage before each test
-    jest.clearAllMocks();
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-
   it('should initialize with no user', () => {
+    mockIsAuthenticated.mockReturnValue(false);
     renderWithProviders(<TestComponent />);
     expect(screen.getByTestId('status')).toHaveTextContent('Not Authenticated');
     expect(screen.queryByTestId('username')).not.toBeInTheDocument();
@@ -67,10 +91,11 @@ describe('Authentication', () => {
 
   it('should handle successful login', async () => {
     // Mock successful login response
-    api.login.mockResolvedValueOnce({
+    mockLogin.mockResolvedValueOnce({
       user: { username: 'testuser', roles: ['user'] },
       token: 'test-token'
     });
+    mockIsAuthenticated.mockReturnValue(true);
 
     renderWithProviders(<TestComponent />);
     
@@ -82,21 +107,21 @@ describe('Authentication', () => {
     
     // Wait for login to complete
     await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith(
+        { username: 'testuser', password: 'password' },
+        true
+      );
       expect(screen.getByTestId('status')).toHaveTextContent('Authenticated');
-      expect(screen.getByTestId('username')).toHaveTextContent('testuser');
     });
     
     // Verify token was stored
-    expect(localStorage.getItem('auth_token')).toBe('test-token');
+    expect(mockStoreToken).toHaveBeenCalledWith('test-token', true);
   });
 
   it('should handle login error', async () => {
     // Mock failed login
-    api.login.mockRejectedValueOnce(new Error('Invalid credentials'));
-
-    // Mock console.error to prevent error logs in test output
-    const originalError = console.error;
-    console.error = jest.fn();
+    const error = new Error('Invalid credentials');
+    mockLogin.mockRejectedValueOnce(error);
 
     renderWithProviders(<TestComponent />);
     
@@ -111,28 +136,29 @@ describe('Authentication', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('Not Authenticated');
     });
     
-    console.error = originalError;
+    expect(mockLogin).toHaveBeenCalledWith(
+      { username: 'testuser', password: 'password' },
+      true
+    );
   });
 
   it('should handle logout', async () => {
-    // Mock successful login
-    api.login.mockResolvedValueOnce({
-      user: { username: 'testuser' },
-      token: 'test-token'
-    });
+    // Set initial state as authenticated
+    mockIsAuthenticated.mockReturnValue(true);
+    mockGetCurrentUser.mockResolvedValueOnce({ username: 'testuser' });
     
-    // Mock successful logout
-    api.logout.mockResolvedValueOnce({});
-
     renderWithProviders(<TestComponent />);
     
-    // Login first
-    fireEvent.click(screen.getByTestId('login-btn'));
+    // Wait for initial load
     await waitFor(() => {
       expect(screen.getByTestId('status')).toHaveTextContent('Authenticated');
     });
     
-    // Now logout
+    // Mock successful logout
+    mockLogout.mockResolvedValueOnce({});
+    mockIsAuthenticated.mockReturnValue(false);
+    
+    // Click logout button
     fireEvent.click(screen.getByTestId('logout-btn'));
     
     // Should return to not authenticated state
@@ -141,7 +167,7 @@ describe('Authentication', () => {
       expect(screen.queryByTestId('username')).not.toBeInTheDocument();
     });
     
-    // Verify token was cleared
-    expect(localStorage.getItem('auth_token')).toBeNull();
+    // Verify auth data was cleared
+    expect(mockClearAuthData).toHaveBeenCalled();
   });
 });

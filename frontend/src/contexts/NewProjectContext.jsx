@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFeedback } from '../components/feedback/FeedbackContext';
 import { useApi } from './NewApiContext';
-import { useAuth } from './NewAuthContext';
+import { useAuthContext } from '../hooks/useAuthContext';
 
 const ProjectContext = createContext();
 
@@ -13,9 +13,356 @@ export const ProjectProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [showProjectTypeSelector, setShowProjectTypeSelector] = useState(true);
   const { showErrorToast, showSuccessToast } = useFeedback();
-  const { isAuthenticated } = useAuth();
+  
+  // Use the new auth context hook
+  const { isAuthenticated, token } = useAuthContext();
   const api = useApi();
   const navigate = useNavigate();
+
+  // Get the current storage quota usage
+  const getStorageUsage = useCallback(() => {
+    try {
+      const total = JSON.stringify(localStorage).length;
+      const max = 5 * 1024 * 1024; // 5MB typical limit
+      return { used: total, max, percent: (total / max) * 100 };
+    } catch (e) {
+      console.warn('Could not calculate storage usage:', e);
+      return { used: 0, max: 0, percent: 0 };
+    }
+  }, []);
+
+  // Clean up old projects to free up space
+  const cleanupOldProjects = useCallback((targetSizeMB = 1) => {
+    try {
+      console.log(`[ProjectContext] Starting storage cleanup, target: ${targetSizeMB}MB`);
+      
+      // Get current projects index
+      let projectsIndex = [];
+      try {
+        const indexData = localStorage.getItem('projects_index');
+        projectsIndex = indexData ? JSON.parse(indexData) : [];
+      } catch (e) {
+        console.warn('Failed to parse projects index, resetting...');
+        localStorage.removeItem('projects_index');
+      }
+      
+      if (!Array.isArray(projectsIndex) || projectsIndex.length === 0) {
+        console.log('[ProjectContext] No projects to clean up');
+        return;
+      }
+      
+      // Sort by last accessed (oldest first) and size (largest first)
+      const sortedIndex = [...projectsIndex].sort((a, b) => {
+        // First sort by last accessed (oldest first)
+        const dateDiff = new Date(a.lastAccessed || 0) - new Date(b.lastAccessed || 0);
+        if (dateDiff !== 0) return dateDiff;
+        // Then by size (largest first)
+        return (b.size || 0) - (a.size || 0);
+      });
+      
+      // Calculate current storage usage
+      const storageUsage = getStorageUsage();
+      const targetBytes = targetSizeMB * 1024 * 1024;
+      
+      console.log(`[ProjectContext] Current storage: ${(storageUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(storageUsage.max / (1024 * 1024)).toFixed(2)}MB`);
+      
+      // If we're already under the target, no need to clean up
+      if (storageUsage.used < targetBytes) {
+        console.log('[ProjectContext] Storage usage is within limits, no cleanup needed');
+        return;
+      }
+      
+      // Start removing projects until we're under the target
+      let bytesFreed = 0;
+      const bytesToFree = storageUsage.used - targetBytes;
+      const projectsToKeep = [];
+      const projectsToRemove = [];
+      
+      // Process projects from oldest/most expendable to newest
+      for (const project of sortedIndex) {
+        if (bytesFreed < bytesToFree) {
+          // Try to remove this project
+          try {
+            const projectKey = `p_${project.id}`;
+            const projectData = localStorage.getItem(projectKey);
+            if (projectData) {
+              localStorage.removeItem(projectKey);
+              bytesFreed += projectData.length * 2; // Approximate size in bytes (2 bytes per char)
+              projectsToRemove.push(project.id);
+              console.log(`[ProjectContext] Removed project ${project.id} (${(project.size / 1024).toFixed(2)}KB)`);
+            }
+          } catch (e) {
+            console.warn(`[ProjectContext] Failed to remove project ${project.id}:`, e);
+          }
+        } else {
+          projectsToKeep.push(project);
+        }
+      }
+      
+      // Update the index with remaining projects
+      if (projectsToRemove.length > 0) {
+        const newIndex = projectsToKeep.sort((a, b) => 
+          new Date(b.lastAccessed) - new Date(a.lastAccessed)
+        );
+        
+        try {
+          localStorage.setItem('projects_index', JSON.stringify(newIndex));
+          console.log(`[ProjectContext] Cleaned up ${projectsToRemove.length} projects, freed ${(bytesFreed / (1024 * 1024)).toFixed(2)}MB`);
+          
+          // Verify we actually freed up space
+          const newUsage = getStorageUsage();
+          console.log(`[ProjectContext] New storage usage: ${(newUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(newUsage.max / (1024 * 1024)).toFixed(2)}MB`);
+          
+          // If we're still over quota, try a more aggressive cleanup
+          if (newUsage.percent > 90) {
+            console.warn('[ProjectContext] Still over 90% quota, performing aggressive cleanup');
+            // Clear all project-related keys
+            const keysToKeep = ['auth_token', 'session_id', 'user_preferences'];
+            const allKeys = Object.keys(localStorage);
+            
+            allKeys.forEach(key => {
+              if (!keysToKeep.includes(key) && !key.startsWith('p_') && key !== 'projects_index') {
+                try {
+                  localStorage.removeItem(key);
+                } catch (e) {
+                  console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+                }
+              }
+            });
+            
+            // If still over quota, clear everything except critical auth
+            const currentUsage = getStorageUsage();
+            if (currentUsage.percent > 90) {
+              console.warn('[ProjectContext] Still over 90% after aggressive cleanup, clearing all projects');
+              allKeys.forEach(key => {
+                if (!keysToKeep.includes(key)) {
+                  try {
+                    localStorage.removeItem(key);
+                  } catch (e) {
+                    console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+                  }
+                }
+              });
+            }
+            
+            console.log('[ProjectContext] Aggressive cleanup completed');
+          }
+        } catch (e) {
+          console.error('[ProjectContext] Failed to update projects index after cleanup:', e);
+          // If we can't update the index, clear everything to avoid inconsistency
+          localStorage.clear();
+        }
+      } else {
+        console.log('[ProjectContext] No projects could be removed, clearing all storage');
+        localStorage.clear();
+      }
+    } catch (e) {
+      console.error('Fatal error during storage cleanup:', e);
+      // Last resort: clear everything
+      try {
+        localStorage.clear();
+      } catch (clearError) {
+        console.error('Failed to clear localStorage:', clearError);
+      }
+    }
+  }, [getStorageUsage]);
+
+  // Save projects to localStorage efficiently with size limits and retries
+  const saveProjectsToStorage = useCallback((projectsToSave, depth = 0) => {
+    if (!Array.isArray(projectsToSave) || projectsToSave.length === 0) {
+      console.log('[ProjectContext] No projects to save');
+      return;
+    }
+    
+    // Prevent infinite recursion
+    if (depth > 2) {
+      console.error('[ProjectContext] Max save retry depth reached, giving up');
+      return;
+    }
+    
+    // Sort projects by size (smallest first) to maximize success rate
+    const sortedProjects = [...projectsToSave]
+      .map(project => ({
+        project,
+        size: JSON.stringify(project).length
+      }))
+      .sort((a, b) => a.size - b.size);
+    
+    // Track which projects were saved successfully
+    const savedProjects = [];
+    const failedProjects = [];
+    
+    // Try to save each project
+    for (const { project, size } of sortedProjects) {
+      if (!project || !project.id) continue;
+      
+      const projectKey = `p_${project.id}`;
+      const projectData = JSON.stringify(project);
+      
+      try {
+        // Check if this would exceed quota
+        const currentUsage = getStorageUsage();
+        if (currentUsage.used + projectData.length > currentUsage.max * 0.9) { // Leave 10% buffer
+          console.warn(`[ProjectContext] Project ${project.id} (${(size/1024).toFixed(2)}KB) would exceed 90% quota, cleaning up first`);
+          cleanupOldProjects(1); // Try to get down to 1MB
+        }
+        
+        // Save the project
+        localStorage.setItem(projectKey, projectData);
+        savedProjects.push({ ...project, size });
+        
+      } catch (e) {
+        if (e.name === 'QuotaExceededError') {
+          console.warn(`[ProjectContext] Quota exceeded saving project ${project.id}, cleaning up and retrying...`);
+          
+          // Try to free up space
+          cleanupOldProjects(1); // Try to get down to 1MB
+          
+          // Try one more time after cleanup
+          try {
+            localStorage.setItem(projectKey, projectData);
+            savedProjects.push({ ...project, size });
+            console.log(`[ProjectContext] Successfully saved project ${project.id} after cleanup`);
+          } catch (retryError) {
+            console.error(`[ProjectContext] Still out of space after cleanup for project ${project.id}:`, retryError);
+            failedProjects.push(project.id);
+          }
+        } else {
+          console.error(`[ProjectContext] Error saving project ${project.id}:`, e);
+          failedProjects.push(project.id);
+        }
+      }
+    }
+    
+    // Update the projects index with successfully saved projects
+    if (savedProjects.length > 0) {
+      try {
+        const now = new Date().toISOString();
+        const projectsIndex = [];
+        
+        // Try to load existing index
+        try {
+          const existingIndex = localStorage.getItem('projects_index');
+          if (existingIndex) {
+            projectsIndex.push(...JSON.parse(existingIndex));
+          }
+        } catch (e) {
+          console.warn('[ProjectContext] Failed to parse existing projects index, starting fresh');
+        }
+        
+        // Create a map of existing projects for quick lookup
+        const indexMap = new Map(projectsIndex.map(item => [item.id, item]));
+        
+        // Update with saved projects
+        savedProjects.forEach(({ project, size }) => {
+          if (!project || !project.id) return;
+          
+          indexMap.set(project.id, {
+            id: project.id,
+            name: project.name || 'Untitled Project',
+            description: project.description || '',
+            language: project.language || '',
+            type: project.type || 'web',
+            updatedAt: project.updatedAt || now,
+            lastAccessed: now,
+            fileCount: Array.isArray(project.files) ? project.files.length : 0,
+            size: size || 0
+          });
+        });
+        
+        // Convert back to array, sort by last accessed, and limit to 100 entries
+        const updatedIndex = Array.from(indexMap.values())
+          .sort((a, b) => new Date(b.lastAccessed) - new Date(a.lastAccessed))
+          .slice(0, 100);
+        
+        // Save the updated index
+        localStorage.setItem('projects_index', JSON.stringify(updatedIndex));
+        localStorage.setItem('projects_last_fetch', now);
+        
+        console.log(`[ProjectContext] Successfully updated index with ${savedProjects.length} projects`);
+        
+      } catch (e) {
+        console.error('[ProjectContext] Failed to update projects index:', e);
+        // If we can't update the index, it's better to clear it than have it be wrong
+        try {
+          localStorage.removeItem('projects_index');
+        } catch (clearError) {
+          console.error('[ProjectContext] Failed to clear corrupted projects index:', clearError);
+        }
+      }
+    }
+    
+    // Log final storage status
+    const usage = getStorageUsage();
+    console.log(
+      `[ProjectContext] Storage status: ${savedProjects.length} saved, ${failedProjects.length} failed, ` +
+      `Usage: ${(usage.used / (1024 * 1024)).toFixed(2)}MB / ${(usage.max / (1024 * 1024)).toFixed(2)}MB`
+    );
+    
+    // If we had failures, try again with just the failed projects
+    if (failedProjects.length > 0 && depth < 2) {
+      console.log(`[ProjectContext] Retrying ${failedProjects.length} failed saves`);
+      const remainingProjects = projectsToSave.filter(p => p && failedProjects.includes(p.id));
+      return saveProjectsToStorage(remainingProjects, depth + 1);
+    }
+    
+    return {
+      saved: savedProjects.length,
+      failed: failedProjects.length,
+      savedIds: savedProjects.map(p => p.id),
+      failedIds: [...failedProjects]
+    };
+    
+  }, [cleanupOldProjects, getStorageUsage]);
+  
+  // Load projects from localStorage
+  const loadProjectsFromStorage = useCallback(() => {
+    try {
+      const projectsIndex = JSON.parse(localStorage.getItem('projects_index') || '[]');
+      if (!Array.isArray(projectsIndex) || projectsIndex.length === 0) {
+        return [];
+      }
+      
+      const loadedProjects = [];
+      const now = new Date().toISOString();
+      const updatedIndex = [];
+      
+      // Load each project from its individual key
+      for (const projectMeta of projectsIndex) {
+        try {
+          const projectData = localStorage.getItem(`p_${projectMeta.id}`);
+          if (projectData) {
+            const project = JSON.parse(projectData);
+            loadedProjects.push(project);
+            
+            // Update lastAccessed time in index
+            updatedIndex.push({
+              ...projectMeta,
+              lastAccessed: now
+            });
+          }
+        } catch (e) {
+          console.warn(`Error loading project ${projectMeta.id} from localStorage:`, e);
+        }
+      }
+      
+      // Update the index with new access times
+      if (updatedIndex.length > 0) {
+        try {
+          localStorage.setItem('projects_index', JSON.stringify(updatedIndex));
+        } catch (e) {
+          console.warn('Failed to update projects index:', e);
+        }
+      }
+      
+      console.log(`[ProjectContext] Loaded ${loadedProjects.length} projects from localStorage`);
+      return loadedProjects;
+      
+    } catch (e) {
+      console.error('Error loading projects from localStorage:', e);
+      return [];
+    }
+  }, []);
 
   // Load projects from API with fallbacks
   const loadProjects = useCallback(async (force = false) => {
@@ -48,13 +395,13 @@ export const ProjectProvider = ({ children }) => {
           console.log(`[ProjectContext] Successfully loaded ${data.length} projects from API`);
           setProjects(data);
           
-          // Update localStorage as cache
+          // Update localStorage as cache using efficient storage
           try {
-            localStorage.setItem('projects', JSON.stringify(data));
-            localStorage.setItem('projects_last_fetch', Date.now().toString());
+            saveProjectsToStorage(data);
             return data;
           } catch (storageError) {
             console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+            // Continue execution even if storage fails
           }
         }
       } catch (apiError) {
@@ -62,14 +409,11 @@ export const ProjectProvider = ({ children }) => {
         
         // Try to load from localStorage if API fails
         try {
-          const cachedProjects = localStorage.getItem('projects');
-          if (cachedProjects) {
-            const parsed = JSON.parse(cachedProjects);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log(`[ProjectContext] Loaded ${parsed.length} projects from localStorage cache`);
-              setProjects(parsed);
-              return parsed;
-            }
+          const loadedProjects = loadProjectsFromStorage();
+          if (loadedProjects.length > 0) {
+            console.log(`[ProjectContext] Loaded ${loadedProjects.length} projects from localStorage cache`);
+            setProjects(loadedProjects);
+            return loadedProjects;
           }
         } catch (cacheError) {
           console.warn('[ProjectContext] Failed to load from localStorage cache', cacheError);
@@ -104,7 +448,7 @@ export const ProjectProvider = ({ children }) => {
           
           // Try to persist the placeholder projects for future use
           try {
-            localStorage.setItem('cachedProjects', JSON.stringify(placeholderProjects));
+            saveProjectsToStorage(placeholderProjects);
           } catch (storageError) {
             console.warn('[ProjectContext] Failed to cache placeholder projects:', storageError);
           }
@@ -191,10 +535,9 @@ export const ProjectProvider = ({ children }) => {
         setProjects(prevProjects => [...prevProjects, newProject]);
         setCurrentProject(newProject);
         
-        // Update cache
+        // Update cache using efficient storage
         try {
-          localStorage.setItem('projects', JSON.stringify([...projects, newProject]));
-          localStorage.setItem('projects_last_fetch', Date.now().toString());
+          saveProjectsToStorage([...projects, newProject]);
         } catch (storageError) {
           console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
         }

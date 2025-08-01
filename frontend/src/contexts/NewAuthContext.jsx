@@ -9,9 +9,11 @@ const NewAuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(() => {
     // Initialize token from localStorage
-    return localStorage.getItem('token') || null;
+    const tokenKey = api.TOKEN_KEYS?.storageKey || 'auth_token';
+    return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey) || null;
   });
   
   const { showErrorToast, showSuccessToast } = useFeedback();
@@ -22,72 +24,123 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       try {
         setLoading(true);
-        const currentToken = api.getAuthToken();
         
+        // First, try to get token from API service
+        let currentToken = await api.getAuthToken();
+        
+        // If no token in API service, check localStorage directly as fallback
         if (!currentToken) {
-          setLoading(false);
-          return;
-        }
-
-        // Validate token with backend using our new API
-        const userData = await api.getCurrentUser();
-        if (userData) {
-          setUser(userData);
-          setToken(currentToken);
+          const tokenKey = api.TOKEN_KEYS?.storageKey || 'auth_token';
+          currentToken = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+          
+          // If we found a token in storage, set it in the API service
+          if (currentToken) {
+            await api.setAuthToken(currentToken);
+            // If we have a token, try to get user data
+            try {
+              const userData = await api.auth.me();
+              setUser(userData);
+              setIsAuthenticated(true);
+            } catch (error) {
+              console.warn('[Auth] Failed to fetch user data:', error);
+              // Clear invalid token
+              await api.clearAuthToken();
+            }
+          }
+        } else {
+          // We have a token, try to get user data
+          try {
+            const userData = await api.auth.me();
+            setUser(userData);
+            setIsAuthenticated(true);
+          } catch (error) {
+            console.warn('[Auth] Failed to fetch user data:', error);
+            // Clear invalid token
+            await api.clearAuthToken();
+            setUser(null);
+            setIsAuthenticated(false);
+          }
         }
       } catch (error) {
-        console.error('Auth validation error:', error);
-        // Clear invalid token
-        await api.clearAuthToken();
+        console.error('[Auth] Error initializing auth:', error);
+        // Ensure clean state on error
+        setUser(null);
+        setIsAuthenticated(false);
+        setToken(null);
       } finally {
         setLoading(false);
       }
     };
-
+    
+    // Initialize auth state
     checkAuth();
+    
+    // Listen for storage events to handle token changes across tabs
+    const handleStorageChange = (e) => {
+      if (e.key === api.TOKEN_KEYS.storageKey) {
+        console.log('[Auth] Token changed in storage, revalidating...');
+        checkAuth();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Login function
-  const login = async (email, password) => {
+  const login = async (username, password, rememberMe = false) => {
     try {
-      setLoading(true);
-      const { user: userData, token: authToken } = await api.auth.login(email, password);
+      setIsLoading(true);
       
-      setUser(userData);
-      setToken(authToken);
+      // Clear any existing auth state
+      await api.clearAuthToken();
+      
+      // Call API login with skipValidation to avoid circular validation
+      const { token, user } = await api.auth.login(username, password);
+      
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+      
+      // Store token using the API service which handles all storage locations
+      // Pass the rememberMe flag to control storage persistence
+      await api.setAuthToken(token, { 
+        persist: rememberMe,
+        skipValidation: true // Skip initial validation since we just got this token
+      });
+      
+      // Update state
+      setUser(user);
+      setIsAuthenticated(true);
+      
+      console.log('[Auth] Login successful');
       showSuccessToast('Successfully logged in');
-      return userData;
+      return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
-      const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
-      showErrorToast(errorMessage);
-      throw error;
+      console.error('[Auth] Login failed:', error);
+      // Ensure clean state on failure
+      await logout();
+      
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || 'Login failed. Please try again.' 
+      };
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   // Logout function
   const logout = async () => {
     try {
-      // Clear local state first for immediate UI update
+      // Clear token using the API service which handles all storage locations
+      await api.clearAuthToken();
+      
+      // Clear state
       setUser(null);
-      setToken(null);
+      setIsAuthenticated(false);
       
-      // Call the API logout if we have a valid token
-      if (token) {
-        try {
-          await api.auth.logout();
-        } catch (error) {
-          console.error('API logout error:', error);
-          // Continue with local logout even if API call fails
-        }
-      }
-      
-      // Clear all auth-related data from storage
-      localStorage.removeItem('token');
-      sessionStorage.removeItem('token');
-      document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      console.log('[Auth] Logout successful');
       
       // Show success message
       showSuccessToast('Successfully logged out');
@@ -162,17 +215,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Check if user is authenticated
-  const isAuthenticated = useCallback(() => {
-    return !!token && !!user;
-  }, [token, user]);
-
   // Context value
   const contextValue = {
     user,
     token,
     loading,
-    isAuthenticated: isAuthenticated(),
+    isAuthenticated,
     login,
     logout,
     register,

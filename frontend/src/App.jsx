@@ -4,9 +4,9 @@ import * as React from 'react';
 const { Suspense, useEffect, useCallback } = React;
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { useAuthContext } from './hooks/useAuthContext';
 import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackContext.jsx';
-import { AuthProvider as NewAuthProvider } from './contexts/AuthContext'; // New auth context
-import { useAuth } from './contexts/NewAuthContext'; // Legacy auth context
+import { AuthProvider as NewAuthProvider } from './contexts/NewAuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ProjectProvider } from './contexts/NewProjectContext';
 import { ApiProvider, useApi } from './contexts/NewApiContext';
@@ -21,10 +21,12 @@ import SettingsPage from './pages/SettingsPage';
 import TerminalPage from './pages/TerminalPage';
 import ChatPage from './pages/ChatPage';
 import WritePage from './pages/WritePage';
+import Register from './pages/Register';
 
-// Protected route component
+// Protected route component with fallback for missing auth context
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthContext();
+  
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
@@ -53,47 +55,60 @@ const AppContainer = () => {
   
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <SettingsProvider>
+      <SettingsProvider>
+        <NewAuthProvider>
           <ApiProvider>
             <ProjectProvider>
               <AIProvider>
                 <HotkeysProvider>
-                <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-                  <Routes>
-                    <Route path="/settings/*" element={
-                      <ProtectedRoute>
-                        <SettingsPage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/terminal/:projectId?" element={
-                      <ProtectedRoute>
-                        <TerminalPage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/chat/:projectId?" element={
-                      <ProtectedRoute>
-                        <ChatPage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/write/:projectId?" element={
-                      <ProtectedRoute>
-                        <WritePage />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/*" element={<AppWithTheme />} />
-                  </Routes>
-                  <ToastContainer 
-                    toasts={messageHistory} 
-                    onDismiss={handleDismissToast}
-                  />
-                </Suspense>
+                  <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+                    <Routes>
+                      <Route 
+                        path="/settings/*" 
+                        element={
+                          <ProtectedRoute>
+                            <SettingsPage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="/terminal/:projectId?" 
+                        element={
+                          <ProtectedRoute>
+                            <TerminalPage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="/chat/:projectId?" 
+                        element={
+                          <ProtectedRoute>
+                            <ChatPage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route 
+                        path="/write/:projectId?" 
+                        element={
+                          <ProtectedRoute>
+                            <WritePage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      <Route path="/register" element={<Register />} />
+                      <Route path="/*" element={<AppWithTheme />} />
+                    </Routes>
+                    <ToastContainer 
+                      toasts={messageHistory} 
+                      onDismiss={handleDismissToast}
+                    />
+                  </Suspense>
                 </HotkeysProvider>
               </AIProvider>
             </ProjectProvider>
           </ApiProvider>
-        </SettingsProvider>
-      </AuthProvider>
+        </NewAuthProvider>
+      </SettingsProvider>
     </ThemeProvider>
   );
 };

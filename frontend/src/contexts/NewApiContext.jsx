@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from './NewAuthContext';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useFeedback } from '../components/feedback/FeedbackContext';
+import { useAuthContext } from '../hooks/useAuthContext';
 import api from '../services/api';
 
 // Debug log API methods
@@ -102,82 +102,109 @@ const apiMethods = logApiMethods();
 
 // Helper function to create a project with fallbacks
 const createProjectWithFallbacks = async (projectData) => {
+  console.log('[createProjectWithFallbacks] Starting project creation with data:', projectData);
+  
   try {
-    console.log('[API Context] Creating project with data:', projectData);
+    // Ensure we have required fields
+    const projectId = projectData.id || `project_${Date.now()}`;
+    const timestamp = new Date().toISOString();
+    
+    // Create complete project data with defaults
+    const completeProjectData = {
+      ...projectData,
+      id: projectId,
+      name: projectData.name || 'New Project',
+      description: projectData.description || 'A new project',
+      createdAt: projectData.createdAt || timestamp,
+      updatedAt: timestamp,
+      files: projectData.files || [],
+      tags: Array.isArray(projectData.tags) ? projectData.tags : [],
+      metadata: {
+        ...(projectData.metadata || {}),
+        createdAt: projectData.metadata?.createdAt || timestamp,
+        updatedAt: timestamp,
+        source: projectData.metadata?.source || 'api',
+        version: projectData.metadata?.version || '1.0.0',
+        lastOpened: timestamp
+      },
+      isFavorite: projectData.isFavorite || false,
+      isLocal: true,
+      lastModified: timestamp
+    };
+    
+    console.log('[createProjectWithFallbacks] Complete project data:', completeProjectData);
     
     // First try the API if available
-    if (api && typeof api.createProject === 'function') {
-      console.log('[API Context] Using API to create project');
-      return await api.createProject(projectData);
+    if (api.createProject && typeof api.createProject === 'function') {
+      try {
+        console.log('[API] Attempting to create project via API');
+        const result = await api.createProject(completeProjectData);
+        if (result?.id) {
+          console.log('[API] Project created successfully via API:', result.id);
+          return { ...completeProjectData, ...result, isLocal: false };
+        }
+      } catch (apiError) {
+        console.warn('[API] Error creating project via API, trying fallback:', apiError);
+        // Continue to fallback methods
+      }
     }
     
-    // Fallback to IndexedDB
+    // Fallback to IndexedDB if available
     if (window.indexedDB) {
-      console.log('[API Context] Falling back to IndexedDB for project creation');
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open('projectsDB', 1);
-        
-        request.onsuccess = (event) => {
-          const db = event.target.result;
-          const transaction = db.transaction(['projects'], 'readwrite');
-          const store = transaction.objectStore('projects');
+      console.log('[IndexedDB] Attempting to create project in IndexedDB');
+      try {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('CoderProjectsDB', 1);
           
-          // Generate an ID if not provided
-          const projectId = projectData.id || 'proj_' + Date.now();
-          const projectWithId = {
-            ...projectData,
-            id: projectId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            source: 'indexeddb-fallback'
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+          
+          request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('projects')) {
+              db.createObjectStore('projects', { keyPath: 'id' });
+            }
           };
-          
-          const addRequest = store.add(projectWithId);
-          
-          addRequest.onsuccess = () => {
-            console.log('[IndexedDB] Project saved successfully');
-            resolve({ ...projectWithId, id: projectId });
-          };
-          
-          addRequest.onerror = (event) => {
-            console.error('[IndexedDB] Error saving project:', event.target.error);
-            reject(new Error('Failed to save project locally'));
-          };
-        };
+        });
         
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains('projects')) {
-            db.createObjectStore('projects', { keyPath: 'id' });
-          }
-        };
+        const transaction = db.transaction(['projects'], 'readwrite');
+        const store = transaction.objectStore('projects');
         
-        request.onerror = () => {
-          console.error('[IndexedDB] Failed to open database');
-          reject(new Error('Failed to open local database'));
-        };
-      });
+        // Add the project
+        await new Promise((resolve, reject) => {
+          const request = store.put({ ...completeProjectData, isLocal: true });
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+        
+        console.log('[IndexedDB] Project created successfully:', projectId);
+        return { ...completeProjectData, isLocal: true };
+      } catch (indexedDBError) {
+        console.warn('[IndexedDB] Error creating project:', indexedDBError);
+        // Continue to localStorage fallback
+      }
     }
     
     // Final fallback to localStorage
-    console.warn('[API Context] Falling back to localStorage for project creation');
+    console.log('[LocalStorage] Falling back to localStorage for project creation');
     try {
       const projects = JSON.parse(localStorage.getItem('projects') || '[]');
-      const projectId = projectData.id || 'proj_' + Date.now();
-      const projectWithId = {
-        ...projectData,
-        id: projectId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        source: 'localstorage-fallback'
-      };
+      const projectToSave = { ...completeProjectData, isLocal: true };
       
-      projects.push(projectWithId);
+      // Remove any existing project with the same ID
+      const existingIndex = projects.findIndex(p => p.id === projectId);
+      if (existingIndex >= 0) {
+        projects[existingIndex] = projectToSave;
+      } else {
+        projects.push(projectToSave);
+      }
+      
       localStorage.setItem('projects', JSON.stringify(projects));
-      return projectWithId;
+      console.log('[LocalStorage] Project saved successfully:', projectId);
+      return projectToSave;
     } catch (localError) {
       console.error('[LocalStorage] Error in fallback project creation:', localError);
-      throw new Error('Failed to create project. Please try again later.');
+      throw new Error('Failed to create project in any available storage. Please check your browser permissions.');
     }
   } catch (error) {
     console.error('[API Context] Error in createProject:', error);
@@ -185,13 +212,14 @@ const createProjectWithFallbacks = async (projectData) => {
   }
 };
 
-// Create the context with proper typing and default values
+// Create the context with default values
 const NewApiContext = createContext({
-  // Auth methods
-  isAuthenticated: () => api?.isAuthenticated?.() || false,
-  getAuthToken: () => api?.getAuthToken?.() || null,
-  setAuthToken: (token) => api?.setAuthToken?.(token) || null,
-  clearAuthToken: () => api?.clearAuthToken?.() || null,
+  // Auth methods (will be overridden by provider)
+  isAuthenticated: () => false,
+  getAuthToken: () => null,
+  setAuthToken: () => {},
+  clearAuthToken: () => {},
+  token: null,
   
   // Project methods
   createProject: createProjectWithFallbacks,
@@ -249,14 +277,35 @@ const NewApiContext = createContext({
 });
 
 export const ApiProvider = ({ children }) => {
-  const { token, logout, user } = useAuth();
-  const { showErrorToast } = useFeedback();
+  const { showErrorToast } = useFeedback?.() || { showErrorToast: console.error };
+  const { token, isAuthenticated } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Ensure the API has the latest auth token
+  useEffect(() => {
+    if (token) {
+      api.setAuthToken(token);
+    } else {
+      api.clearAuthToken();
+    }
+  }, [token]);
 
   // Log API methods on mount
   useEffect(() => {
     console.log('NewApiContext - Mounted with API methods:', logApiMethods());
+  }, []);
+
+  // Listen for storage events to sync token changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'token') {
+        setToken(e.newValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Initialize API with auth token when it changes
@@ -508,53 +557,116 @@ export const ApiProvider = ({ children }) => {
     },
     // Get projects with fallback to local storage
     getProjects: async (forceRefresh = false) => {
+      console.log('[getProjects] Fetching projects, forceRefresh:', forceRefresh);
+      
+      // Helper function to get projects from IndexedDB
+      const getProjectsFromIndexedDB = async () => {
+        return new Promise((resolve) => {
+          if (!window.indexedDB) {
+            console.log('[IndexedDB] IndexedDB not available');
+            return resolve([]);
+          }
+          
+          const request = indexedDB.open('CoderProjectsDB', 1);
+          
+          request.onsuccess = (event) => {
+            const db = event.target.result;
+            const transaction = db.transaction(['projects'], 'readonly');
+            const store = transaction.objectStore('projects');
+            const getRequest = store.getAll();
+            
+            getRequest.onsuccess = () => {
+              const projects = Array.isArray(getRequest.result) ? getRequest.result : [];
+              console.log(`[IndexedDB] Retrieved ${projects.length} projects`);
+              resolve(projects);
+            };
+            
+            getRequest.onerror = (error) => {
+              console.warn('[IndexedDB] Error getting projects:', error);
+              resolve([]);
+            };
+          };
+          
+          request.onerror = (error) => {
+            console.warn('[IndexedDB] Failed to open database:', error);
+            resolve([]);
+          };
+          
+          request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('projects')) {
+              db.createObjectStore('projects', { keyPath: 'id' });
+            }
+          };
+        });
+      };
+      
+      // Helper function to get projects from localStorage
+      const getProjectsFromLocalStorage = () => {
+        try {
+          const projects = JSON.parse(localStorage.getItem('projects') || '[]');
+          return Array.isArray(projects) ? projects : [];
+        } catch (error) {
+          console.error('[LocalStorage] Error parsing projects:', error);
+          return [];
+        }
+      };
+      
       try {
+        // Try to get projects from API first if not forcing refresh
+        let apiProjects = [];
         if (api.getProjects && typeof api.getProjects === 'function') {
-          return await api.getProjects(forceRefresh);
+          try {
+            apiProjects = await api.getProjects(forceRefresh);
+            apiProjects = Array.isArray(apiProjects) ? apiProjects : [];
+            console.log(`[API] Retrieved ${apiProjects.length} projects from API`);
+          } catch (apiError) {
+            console.warn('[API] Error fetching projects, falling back to local storage:', apiError);
+          }
         }
         
-        // Fallback to IndexedDB
-        if (window.indexedDB) {
-          return new Promise((resolve) => {
-            const request = indexedDB.open('projectsDB', 1);
-            
-            request.onsuccess = (event) => {
-              const db = event.target.result;
-              const transaction = db.transaction(['projects'], 'readonly');
-              const store = transaction.objectStore('projects');
-              const getRequest = store.getAll();
-              
-              getRequest.onsuccess = () => {
-                const projects = getRequest.result || [];
-                console.log(`[IndexedDB] Retrieved ${projects.length} projects`);
-                resolve(projects);
-              };
-              
-              getRequest.onerror = () => {
-                console.warn('[IndexedDB] Error getting projects, falling back to localStorage');
-                resolve(JSON.parse(localStorage.getItem('projects') || '[]'));
-              };
-            };
-            
-            request.onerror = () => {
-              console.warn('[IndexedDB] Failed to open database, falling back to localStorage');
-              resolve(JSON.parse(localStorage.getItem('projects') || '[]'));
-            };
-            
-            request.onupgradeneeded = (event) => {
-              const db = event.target.result;
-              if (!db.objectStoreNames.contains('projects')) {
-                db.createObjectStore('projects', { keyPath: 'id' });
+        // Get projects from IndexedDB
+        const indexedDBProjects = await getProjectsFromIndexedDB();
+        
+        // Get projects from localStorage
+        const localStorageProjects = getProjectsFromLocalStorage();
+        
+        // Merge all projects, giving priority to API projects, then IndexedDB, then localStorage
+        const projectMap = new Map();
+        
+        // Add projects in order of priority (lowest to highest)
+        [localStorageProjects, indexedDBProjects, apiProjects].forEach(projects => {
+          projects.forEach(project => {
+            if (project?.id) {
+              // Only add if not already in the map (higher priority sources come later)
+              if (!projectMap.has(project.id)) {
+                projectMap.set(project.id, project);
               }
-            };
+            }
           });
+        });
+        
+        const mergedProjects = Array.from(projectMap.values());
+        console.log(`[getProjects] Merged ${mergedProjects.length} projects from all sources`);
+        
+        // If we have no projects from any source, return empty array
+        if (mergedProjects.length === 0) {
+          console.log('[getProjects] No projects found in any storage');
+          return [];
         }
         
-        // Final fallback to localStorage
-        return JSON.parse(localStorage.getItem('projects') || '[]');
+        // Sort projects by last modified date (newest first)
+        const sortedProjects = mergedProjects.sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt || 0);
+          const dateB = new Date(b.updatedAt || b.createdAt || 0);
+          return dateB - dateA;
+        });
+        
+        return sortedProjects;
       } catch (error) {
-        console.error('[API] Error in getProjects:', error);
-        return [];
+        console.error('[getProjects] Error getting projects:', error);
+        // Try to return whatever we can from localStorage as last resort
+        return getProjectsFromLocalStorage();
       }
     },
     
@@ -796,7 +908,6 @@ export const ApiProvider = ({ children }) => {
         return false;
       }
     },
-    
   };
 
   return (

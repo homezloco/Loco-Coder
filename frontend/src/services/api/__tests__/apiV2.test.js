@@ -1,8 +1,44 @@
 import api from '../apiV2';
 
 // Mock fetch
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+global.fetch = jest.fn();
+
+// Mock localStorage and sessionStorage
+const localStorageMock = (() => {
+  let store = {};
+  return {
+    getItem: jest.fn((key) => store[key] || null),
+    setItem: jest.fn((key, value) => {
+      store[key] = value.toString();
+    }),
+    removeItem: jest.fn((key) => {
+      delete store[key];
+    }),
+    clear: jest.fn(() => {
+      store = {};
+    }),
+  };
+})();
+
+const sessionStorageMock = (() => {
+  let store = {};
+  return {
+    getItem: jest.fn((key) => store[key] || null),
+    setItem: jest.fn((key, value) => {
+      store[key] = value.toString();
+    }),
+    removeItem: jest.fn((key) => {
+      delete store[key];
+    }),
+    clear: jest.fn(() => {
+      store = {};
+    }),
+  };
+})();
+
+// Mock global objects
+global.localStorage = localStorageMock;
+global.sessionStorage = sessionStorageMock;
 
 describe('API V2 Service', () => {
   const mockToken = 'test-token';

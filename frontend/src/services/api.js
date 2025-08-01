@@ -1,5 +1,5 @@
 // Import configuration and services
-import { API_BASE_URL, FALLBACK_URLS, TOKEN_KEYS } from './config';
+import { API_BASE_URL, FALLBACK_URLS, TOKEN_KEYS } from "./api/config.js";
 import createAiService from '../api/modules/ai.js';
 
 // Debug configuration
@@ -164,15 +164,38 @@ async function initAuthToken() {
           }
         }
       }
+    } catch (error) {
+      console.error('[API] Error initializing token from storage:', error);
+    }
+
+    // Define token sources
+    const tokenSources = [
+      {
+        name: 'localStorage',
+        description: `localStorage.${TOKEN_KEYS.storageKey}`,
+        get: () => localStorage.getItem(TOKEN_KEYS.storageKey),
+        set: (token) => localStorage.setItem(TOKEN_KEYS.storageKey, token)
+      },
+      {
+        name: 'sessionStorage',
+        description: `sessionStorage.${TOKEN_KEYS.storageKey}`,
+        get: () => sessionStorage.getItem(TOKEN_KEYS.storageKey),
+        set: (token) => sessionStorage.setItem(TOKEN_KEYS.storageKey, token)
+      },
+      { 
+        name: 'cookie',
+        description: 'document.cookie',
+        get: () => {
+          if (typeof document !== 'undefined') {
+            const match = document.cookie.match(/token=([^;]+)/);
+            return match ? decodeURIComponent(match[1]) : null;
+          }
+          return null;
         },
         set: (token) => {
-          try {
+          if (typeof document !== 'undefined') {
             const cookieValue = `token=${encodeURIComponent(token)}; path=/; max-age=2592000; samesite=strict`;
             document.cookie = cookieValue;
-            console.log('[API] Stored token in cookie');
-          } catch (e) {
-            console.error('[API] Error storing in cookie:', e);
-            throw e;
           }
         }
       }
@@ -286,8 +309,11 @@ function clearAuthToken() {
   authToken = '';
   
   try {
+    // Get the token storage key from config
+    const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
+    
     // Clear from all possible storage locations
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(tokenKey);
     localStorage.removeItem('authToken');
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('authToken');
@@ -511,6 +537,21 @@ async function fetchWithTimeout(resource, options = {}) {
             const error = new Error('Authentication required');
             error.code = 'AUTH_REQUIRED';
             error.status = 401;
+            
+            // Clear any invalid tokens from storage
+            if (api.clearAuthToken) {
+              api.clearAuthToken();
+            }
+            
+            // Don't throw for getProjects as we handle it there
+            if (url.includes('/projects') && !url.includes('/projects/')) {
+              console.log('[API] Silently handling missing token for projects endpoint');
+              return new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            
             throw error;
           }
           
@@ -1017,6 +1058,13 @@ const api = {
   async getProjects(forceRefresh = false) {
     const cacheKey = 'getProjects';
     
+    // Check if we have a valid token first
+    const token = await this.getAuthToken();
+    if (!token) {
+      console.warn('[API] No authentication token available for getProjects - returning empty array');
+      return [];
+    }
+    
     // Return cached response if available and not forcing refresh
     if (!forceRefresh && requestCache.has(cacheKey)) {
       const { data, timestamp } = requestCache.get(cacheKey);
@@ -1026,20 +1074,12 @@ const api = {
       }
     }
     
-    // Get the auth token but don't fail if not available
-    const token = await this.getAuthToken();
-    
-    // Prepare headers with auth if available
+    // Prepare headers with auth
     const headers = {
       'Accept': 'application/json',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
     };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      console.warn('[API] No authentication token available for getProjects - proceeding without authentication');
-    }
     
     // Use debounced version to prevent rapid successive calls
     const fetchProjects = async () => {
@@ -1167,7 +1207,7 @@ const api = {
         tokenLength: token ? token.length : 0,
         tokenPrefix: token ? `${token.substring(0, 5)}...` : 'none',
         storageStatus: {
-          localStorage: typeof localStorage !== 'undefined' && localStorage.getItem(TOKEN_STORAGE_KEY) ? 'exists' : 'not found',
+          localStorage: typeof localStorage !== 'undefined' && localStorage.getItem(TOKEN_KEYS.storageKey) ? 'exists' : 'not found',
           sessionStorage: typeof sessionStorage !== 'undefined' && sessionStorage.getItem('token') ? 'exists' : 'not found',
           cookie: typeof document !== 'undefined' && document.cookie.includes('token=') ? 'exists' : 'not found'
         },
@@ -1568,34 +1608,37 @@ const api = {
   },
 
   // Helper function to get auth token from various sources
-  getAuthToken: async () => {
+  getAuthToken: async (skipValidation = false) => {
     console.group('[API] getAuthToken');
     try {
       // If we already have a valid token in memory, use it
-      if (authToken) {
-        console.log('[API] Using in-memory auth token');
+      if (authToken && !isTokenExpired(authToken)) {
+        console.log('[API] Using valid in-memory auth token');
         return authToken;
       }
 
+      // Get the token storage key from config
+      const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
+      
       // Token sources array with proper formatting
       const tokenSources = [
         {
           name: 'localStorage',
-          description: `localStorage.${TOKEN_STORAGE_KEY}`,
-          get: () => localStorage.getItem(TOKEN_STORAGE_KEY)
+          description: `localStorage.${tokenKey}`,
+          get: () => localStorage.getItem(tokenKey)
         },
         {
           name: 'sessionStorage',
-          description: `sessionStorage.${TOKEN_STORAGE_KEY}`,
-          get: () => sessionStorage.getItem(TOKEN_STORAGE_KEY)
+          description: `sessionStorage.${tokenKey}`,
+          get: () => sessionStorage.getItem(tokenKey)
         },
         { 
           name: 'cookie',
           description: 'document.cookie',
           get: () => {
             if (typeof document !== 'undefined') {
-              const match = document.cookie.match(/token=([^;]+)/);
-              return match ? decodeURIComponent(match[1]) : null;
+              const match = document.cookie.match(new RegExp(`(^| )${tokenKey}=([^;]+)`));
+              return match ? decodeURIComponent(match[2]) : null;
             }
             return null;
           }
@@ -1609,34 +1652,51 @@ const api = {
           const token = source.get();
           
           if (token && typeof token === 'string' && token.split('.').length === 3) {
+            // Skip validation if explicitly requested (e.g., during login)
+            if (skipValidation) {
+              console.log(`[API] Found token in ${source.name} (validation skipped)`);
+              authToken = token;
+              return token;
+            }
+
+            // Check if token is expired
+            if (isTokenExpired(token)) {
+              console.warn(`[API] Token in ${source.name} is expired`);
+              continue;
+            }
+
             console.log(`[API] Found valid JWT token in ${source.name}`);
             
             // Cache the token in memory for future use
             authToken = token;
             
-            // Ensure the token is in all storage locations for consistency
-            try {
-              localStorage.setItem(TOKEN_STORAGE_KEY, token);
-              sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
-              document.cookie = `token=${encodeURIComponent(token)}; path=/; max-age=2592000; samesite=strict`;
-              console.log('[API] Synced token across all storage locations');
-            } catch (storageError) {
-              console.warn('[API] Error syncing token across storage locations:', storageError);
-            }
-            
-            // Validate the token with the server if we're online
-            if (navigator.onLine) {
+            // Validate the token with the server if we're online and validation is not skipped
+            if (navigator.onLine && !skipValidation) {
               try {
                 const isValid = await validateToken(token);
                 if (!isValid) {
-                  console.warn('[API] Token validation failed, clearing invalid token');
+                  console.warn('[API] Token validation failed');
                   clearAuthToken();
                   return null;
                 }
+                console.log('[API] Token validated successfully');
               } catch (validationError) {
-                console.warn('[API] Error validating token, proceeding with cached token:', validationError);
+                console.warn('[API] Error validating token:', validationError);
                 // Continue with the token even if validation fails (might be offline)
               }
+            }
+            
+            // Ensure the token is in all storage locations for consistency
+            try {
+              // Only sync to storage if token is valid
+              if (!isTokenExpired(token)) {
+                localStorage.setItem(tokenKey, token);
+                sessionStorage.setItem(tokenKey, token);
+                document.cookie = `${tokenKey}=${encodeURIComponent(token)}; path=/; max-age=${TOKEN_KEYS.expiresIn || 604800}; samesite=strict${window.location.protocol === 'https:' ? '; secure' : ''}`;
+                console.log('[API] Synced token across all storage locations');
+              }
+            } catch (storageError) {
+              console.warn('[API] Error syncing token across storage locations:', storageError);
             }
             
             console.log('[API] Returning valid auth token');
@@ -1649,15 +1709,16 @@ const api = {
       
       console.log('[API] No valid auth token found in any source');
       return null;
+    } catch (error) {
+      console.error('[API] Error in getAuthToken:', error);
+      return null;
     } finally {
       console.groupEnd();
     }
-    
-    return null;
   },
   
   // Set auth token (for testing or manual token management)
-  setAuthToken: (token) => {
+  setAuthToken: async (token, options = {}) => {
     try {
       console.group('[API] Setting auth token');
       
@@ -1676,13 +1737,16 @@ const api = {
       // Store in memory
       authToken = token;
       
+      // Get the token storage key from config
+      const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
+      
       // Persist to storage using consistent key
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+      localStorage.setItem(tokenKey, token);
+      sessionStorage.setItem(tokenKey, token);
       
       // Set cookie (if in browser)
       if (typeof document !== 'undefined') {
-        document.cookie = `${TOKEN_STORAGE_KEY}=${token}; path=/; max-age=2592000; samesite=lax`; // 30 days
+        document.cookie = `${tokenKey}=${token}; path=/; max-age=2592000; samesite=lax`; // 30 days
       }
       
       // Notify listeners
@@ -1710,7 +1774,26 @@ const api = {
   
   // Clear authentication token
   clearAuthToken: () => {
-    return clearAuthToken();
+    console.group('[API] Clearing auth token');
+    try {
+      const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
+      
+      // Clear from memory
+      authToken = null;
+      
+      // Clear from all storage locations
+      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
+      
+      // Clear cookie by setting expiration in the past
+      document.cookie = `${tokenKey}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      
+      console.log('[API] Auth token cleared from all storage locations');
+    } catch (error) {
+      console.error('[API] Error clearing auth token:', error);
+    } finally {
+      console.groupEnd();
+    }
   }
 };
 

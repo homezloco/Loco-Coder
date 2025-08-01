@@ -177,6 +177,13 @@ const Login = () => {
                 'Sign in'
               )}
             </button>
+            
+            <div className={`mt-4 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Don't have an account?{' '}
+              <Link to="/register" className="font-medium text-blue-500 hover:underline">
+                Create one
+              </Link>
+            </div>
           </div>
         </form>
         

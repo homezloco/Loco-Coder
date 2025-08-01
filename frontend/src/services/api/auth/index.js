@@ -226,7 +226,15 @@ if (typeof window !== 'undefined') {
   checkAuth().catch(console.error);
 }
 
-// Export all auth methods
+// Export token methods as named exports
+export const {
+  setAuthToken,
+  getAuthToken,
+  clearAuthToken,
+  validateToken
+} = boundTokenMethods;
+
+// Export auth methods as named exports
 export {
   login,
   logout,
@@ -235,12 +243,6 @@ export {
   onAuthStateChanged,
   getIsAuthenticated
 };
-
-// Export token methods
-export const setAuthToken = boundTokenMethods.setAuthToken;
-export const getAuthToken = boundTokenMethods.getAuthToken;
-export const clearAuthToken = boundTokenMethods.clearAuthToken;
-export const validateToken = boundTokenMethods.validateToken;
 
 // For backward compatibility
 export default {

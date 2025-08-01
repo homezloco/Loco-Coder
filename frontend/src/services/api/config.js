@@ -1,19 +1,25 @@
 // Get API configuration from environment variables with fallbacks
 const getApiConfig = () => {
+  // Use process.env for Node.js (Jest) or import.meta.env for Vite
+  const env = typeof process !== 'undefined' && process.env ? process.env : import.meta.env;
+  
   // Debug environment variables
-  console.log('Environment Variables:', {
-    VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
-    VITE_API_FALLBACK_URLS: import.meta.env.VITE_API_FALLBACK_URLS,
-    NODE_ENV: import.meta.env.MODE,
-    PROD: import.meta.env.PROD,
-    DEV: import.meta.env.DEV
-  });
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('Environment Variables:', {
+      VITE_API_BASE_URL: env.VITE_API_BASE_URL,
+      VITE_API_FALLBACK_URLS: env.VITE_API_FALLBACK_URLS,
+      NODE_ENV: env.MODE || env.NODE_ENV,
+      PROD: env.PROD || (env.NODE_ENV === 'production'),
+      DEV: env.DEV || (env.NODE_ENV === 'development')
+    });
+  }
 
   // Default base URL - use relative URL for Vite proxy in production
-  const defaultBaseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '/api';
+  const isDev = env.DEV || env.NODE_ENV === 'development';
+  const defaultBaseUrl = isDev ? 'http://localhost:8000' : '/api';
   
   // Get base URL from environment or use default
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
+  const baseUrl = env.VITE_API_BASE_URL || defaultBaseUrl;
   
   // Default fallback URLs for different environments
   const defaultFallbackUrls = [
@@ -62,7 +68,11 @@ export const ENDPOINTS = {
   AUTH: {
     LOGIN: '/api/v1/auth/login',
     LOGOUT: '/api/v1/auth/logout',
-    VALIDATE: '/api/v1/auth/validate'
+    VALIDATE: '/api/v1/auth/validate',
+    ERROR: '/api/v1/auth/error',
+    ME: '/api/v1/auth/me',
+    REFRESH: '/api/v1/auth/refresh',
+    REGISTER: '/api/v1/auth/register'
   },
   PROJECTS: {
     BASE: '/api/v1/projects',

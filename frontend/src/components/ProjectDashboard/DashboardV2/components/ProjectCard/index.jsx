@@ -89,20 +89,26 @@ const ProjectCard = ({
           </button>
         </div>
       </div>
-      {project.tags && project.tags.length > 0 && (
+      {Array.isArray(project.tags) && project.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
-          {project.tags.slice(0, 3).map((tag, index) => (
-            <span 
-              key={index}
-              className={`text-xs px-2 py-1 rounded-full ${
-                isDarkMode 
-                  ? 'bg-gray-700 text-gray-300' 
-                  : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {tag}
-            </span>
-          ))}
+          {project.tags.slice(0, 3).map((tag, index) => {
+            // Ensure tag is a string and has a value
+            const tagText = String(tag || '').trim();
+            if (!tagText) return null;
+            
+            return (
+              <span 
+                key={index}
+                className={`text-xs px-2 py-1 rounded-full ${
+                  isDarkMode 
+                    ? 'bg-gray-700 text-gray-300' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {tag}
+              </span>
+            );
+          })}
           {project.tags.length > 3 && (
             <span className="text-xs text-gray-500 dark:text-gray-400 self-center">
               +{project.tags.length - 3} more
