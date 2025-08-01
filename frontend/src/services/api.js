@@ -135,68 +135,35 @@ async function initAuthToken() {
       documentCookie: typeof document !== 'undefined' && 'cookie' in document
     });
 
-    // Skip if we already have a valid token
-    if (authToken) {
-      console.log('[API] Auth token already initialized in memory');
+    // Check if we already have a valid token in memory
+    if (authToken && !isTokenExpired(authToken)) {
+      console.log('[API] Valid auth token already initialized in memory');
       return;
     }
 
     console.log('[API] Initializing auth token from available sources...');
     
-    // Check all possible token locations in order of preference
-    const tokenSources = [
-      { 
-        name: `localStorage.${TOKEN_STORAGE_KEY}`, 
-        get: () => {
-          try {
-            return localStorage.getItem(TOKEN_STORAGE_KEY);
-          } catch (e) {
-            console.warn('[API] Error reading from localStorage.token:', e);
-            return null;
-          }
-        },
-        set: (token) => {
-          try {
-            localStorage.setItem(TOKEN_STORAGE_KEY, token);
-            console.log('[API] Stored token in localStorage.token');
-          } catch (e) {
-            console.error('[API] Error storing in localStorage.token:', e);
-            throw e;
-          }
-        }
-      },
-      { 
-        name: 'sessionStorage.token', 
-        get: () => {
-          try {
-            return sessionStorage.getItem('token');
-          } catch (e) {
-            console.warn('[API] Error reading from sessionStorage.token:', e);
-            return null;
-          }
-        },
-        set: (token) => {
-          try {
-            sessionStorage.setItem('token', token);
-            console.log('[API] Stored token in sessionStorage.token');
-          } catch (e) {
-            console.error('[API] Error storing in sessionStorage.token:', e);
-            throw e;
+    // Try to load token from storage based on configuration
+    try {
+      let token = null;
+      let storedExpiration = null;
+      
+      // Try localStorage first if configured
+      if (TOKEN_KEYS.storageType === 'localStorage' && typeof localStorage !== 'undefined') {
+        token = localStorage.getItem(TOKEN_KEYS.storageKey);
+        const expires = localStorage.getItem(`${TOKEN_KEYS.storageKey}_expires`);
+        storedExpiration = expires ? parseInt(expires, 10) : null;
+        
+        if (token && storedExpiration) {
+          const now = Math.floor(Date.now() / 1000);
+          if (now >= storedExpiration) {
+            console.log('[API] Stored token has expired');
+            token = null;
+            localStorage.removeItem(TOKEN_KEYS.storageKey);
+            localStorage.removeItem(`${TOKEN_KEYS.storageKey}_expires`);
           }
         }
-      },
-      { 
-        name: 'document.cookie',
-        get: () => {
-          try {
-            const match = document.cookie.match(/token=([^;]+)/);
-            const token = match ? decodeURIComponent(match[1]) : null;
-            console.log('[API] Retrieved token from cookie:', token ? '***' : 'not found');
-            return token;
-          } catch (e) {
-            console.warn('[API] Error reading from cookie:', e);
-            return null;
-          }
+      }
         },
         set: (token) => {
           try {

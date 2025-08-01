@@ -5,7 +5,8 @@ const { Suspense, useEffect, useCallback } = React;
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackContext.jsx';
-import { AuthProvider, useAuth } from './contexts/NewAuthContext';
+import { AuthProvider as NewAuthProvider } from './contexts/AuthContext'; // New auth context
+import { useAuth } from './contexts/NewAuthContext'; // Legacy auth context
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ProjectProvider } from './contexts/NewProjectContext';
 import { ApiProvider, useApi } from './contexts/NewApiContext';
