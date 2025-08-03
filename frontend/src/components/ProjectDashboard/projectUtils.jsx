@@ -421,13 +421,22 @@ async function fetchProjects(apiEndpoint, options = {}) {
   // Helper function to get authentication token from various sources
   const getAuthToken = async (quiet = false) => {
     try {
-      // First try to get token from the global api object if available
-      if (window.api && typeof window.api.getAuthToken === 'function') {
-        const token = await window.api.getAuthToken(quiet);
-        if (token) return token;
+      // First try to get token from the centralized token module
+      if (window.api && typeof window.api.auth?.token?.getAuthToken === 'function') {
+        return window.api.auth.token.getAuthToken();
       }
       
-      // Fall back to direct storage if not available
+      // Try to dynamically import the token module
+      try {
+        const tokenModule = await import('../../services/api/auth/token');
+        if (tokenModule && typeof tokenModule.getAuthToken === 'function') {
+          return tokenModule.getAuthToken();
+        }
+      } catch (importError) {
+        if (!quiet) console.warn('Could not import token module:', importError);
+      }
+      
+      // Fall back to direct storage if module is not available
       const token = localStorage.getItem('auth_token') || 
                    sessionStorage.getItem('auth_token') ||
                    localStorage.getItem(TOKEN_KEYS?.storageKey) ||
@@ -468,10 +477,32 @@ async function fetchProjects(apiEndpoint, options = {}) {
         
         // Handle 401 Unauthorized
         if (response.status === 401) {
-          // Clear invalid token
-          if (window.api?.clearAuthToken) {
-            await window.api.clearAuthToken();
+          console.warn('[API] Authentication failed - clearing token');
+          // Try to use the token module directly
+          try {
+            const tokenModule = await import('../../services/api/auth/token');
+            if (tokenModule && typeof tokenModule.clearAuthToken === 'function') {
+              await tokenModule.clearAuthToken();
+              console.log('[API] Token cleared using token module');
+            }
+          } catch (tokenError) {
+            console.error('[API] Error importing token module:', tokenError);
+            // Fallback to window.api
+            if (window.api?.clearAuthToken) {
+              await window.api.clearAuthToken();
+              console.log('[API] Token cleared using window.api');
+            }
           }
+          
+          // Dispatch auth state changed event
+          try {
+            window.dispatchEvent(new CustomEvent('auth-state-changed', {
+              detail: { isAuthenticated: false }
+            }));
+          } catch (eventError) {
+            console.error('[API] Error dispatching auth event:', eventError);
+          }
+          
           // Redirect to login if not already there
           if (!window.location.pathname.includes('/login')) {
             window.location.href = '/login';

@@ -98,9 +98,25 @@ class AiService {
     // Debug: Check if chat method exists before binding
     console.log('[AI Service] Before binding - chat method exists:', typeof this.chat === 'function');
     
+    // Define the chat method directly on the instance to ensure it's available
+    if (typeof this.chat !== 'function') {
+      // Get the chat method from the prototype
+      const chatMethod = Object.getPrototypeOf(this).chat;
+      if (typeof chatMethod === 'function') {
+        // Bind it to the instance
+        this.chat = chatMethod.bind(this);
+      } else {
+        // Create a fallback chat method if not found on prototype
+        this.chat = async function(prompt, options = {}) {
+          console.log('[AI Service] Using fallback chat method');
+          return { response: 'AI service not properly initialized', error: true };
+        };
+      }
+    }
+    
     // Manually bind all methods to ensure they're properly bound
     this.initialize = this.initialize.bind(this);
-    this.chat = this.chat.bind(this);
+    // this.chat is already bound above
     this.execute = this.execute.bind(this);
     this.getAvailableModels = this.getAvailableModels.bind(this);
     this.getModelInfo = this.getModelInfo.bind(this);
@@ -110,7 +126,7 @@ class AiService {
     // Debug: Check if chat method exists after binding
     console.log('[AI Service] After binding - chat method exists:', typeof this.chat === 'function');
     console.log('[AI Service] Instance methods after binding:', 
-      Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+      Object.getOwnPropertyNames(this)
         .filter(prop => typeof this[prop] === 'function')
     );
     
@@ -483,13 +499,33 @@ const createAiService = async () => {
       chatIsFunction: typeof service.chat === 'function'
     });
     
-    // Verify the chat method exists before initialization
+    // Ensure the chat method exists before initialization
+    if (typeof service.chat !== 'function') {
+      console.warn('[AI Service] Chat method not found on instance, attempting to add it');
+      
+      // Try to get the chat method from the prototype
+      const proto = Object.getPrototypeOf(service);
+      if (proto && typeof proto.chat === 'function') {
+        // Bind the prototype method to the instance
+        service.chat = proto.chat.bind(service);
+        console.log('[AI Service] Successfully bound chat method from prototype');
+      } else {
+        // Create a fallback chat method
+        service.chat = async function(prompt, options = {}) {
+          console.log('[AI Service] Using emergency fallback chat method');
+          return { response: 'AI service not properly initialized', error: true };
+        };
+        console.log('[AI Service] Created fallback chat method');
+      }
+    }
+    
+    // Verify the chat method exists now
     if (typeof service.chat !== 'function') {
       const availableMethods = Object.getOwnPropertyNames(service)
         .filter(prop => typeof service[prop] === 'function');
       
       const error = new Error(
-        `Chat method not found on AiService instance. ` +
+        `Chat method still not available after recovery attempts. ` +
         `Available methods: ${availableMethods.join(', ')}`
       );
       
@@ -508,48 +544,59 @@ const createAiService = async () => {
     
     // Initialize the service
     console.log('[AI Service] Initializing AI service...');
-    const initializedService = await service.initialize();
-    
-    if (!initializedService) {
-      throw new Error('Service initialization returned undefined');
+    let initializedService;
+    try {
+      initializedService = await service.initialize();
+    } catch (initError) {
+      console.error('[AI Service] Initialization error:', initError);
+      // Return the service even if initialization fails
+      // This allows the app to function with limited AI capabilities
+      console.log('[AI Service] Returning uninitialized service as fallback');
+      return service;
     }
     
+    // Use the initialized service if available, otherwise fall back to the original
+    const finalService = initializedService || service;
+    
     // Double-check the chat method after initialization
-    if (typeof initializedService.chat !== 'function') {
-      const availableMethods = Object.getOwnPropertyNames(initializedService)
-        .filter(prop => typeof initializedService[prop] === 'function');
-      
-      throw new Error(
-        `Chat method lost after initialization. ` +
-        `Available methods: ${availableMethods.join(', ')}`
-      );
+    if (typeof finalService.chat !== 'function') {
+      console.warn('[AI Service] Chat method lost after initialization, restoring it');
+      // Restore the chat method
+      finalService.chat = service.chat;
     }
     
     console.log('[AI Service] AI service initialized successfully');
     
     // Log the bound methods for debugging
-    const boundMethods = Object.getOwnPropertyNames(initializedService)
-      .filter(prop => typeof initializedService[prop] === 'function')
+    const boundMethods = Object.getOwnPropertyNames(finalService)
+      .filter(prop => typeof finalService[prop] === 'function')
       .filter(prop => !prop.startsWith('_') && prop !== 'constructor');
       
     console.log('[AI Service] Bound methods:', boundMethods);
     
-    return initializedService;
+    return finalService;
     
   } catch (error) {
     console.error('[AI Service] Critical error during service creation:', {
       message: error.message,
       stack: error.stack,
       errorType: error.constructor.name,
-      ...(error.availableMethods && { availableMethods: error.availableMethods })
+      ...(error.debugInfo && { debugInfo: error.debugInfo })
     });
     
-    // Create a more descriptive error
-    const enhancedError = new Error(`Failed to create AI service: ${error.message}`);
-    enhancedError.originalError = error;
-    enhancedError.name = 'AiServiceInitializationError';
+    // Create a fallback service with minimal functionality
+    const fallbackService = {
+      chat: async (prompt, options = {}) => {
+        console.log('[AI Service] Using emergency fallback chat implementation');
+        return { response: 'AI service failed to initialize: ' + error.message, error: true };
+      },
+      isAvailable: () => false,
+      checkHealth: async () => ({ healthy: false, error: error.message }),
+      getAvailableModels: async () => []
+    };
     
-    throw enhancedError;
+    console.log('[AI Service] Returning emergency fallback service');
+    return fallbackService;
   }
 };
 

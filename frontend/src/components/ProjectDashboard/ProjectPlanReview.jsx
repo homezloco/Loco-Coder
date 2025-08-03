@@ -138,6 +138,7 @@ const ProjectPlanReview = ({
   // Generate or load the project logo
   useEffect(() => {
     const generateLogo = async () => {
+      // If logo already exists in the plan, use it
       if (plan.logo) {
         setLogo(plan.logo);
         return;
@@ -145,18 +146,35 @@ const ProjectPlanReview = ({
       
       try {
         setIsGeneratingLogo(true);
-        if (!aiService) {
-          console.warn('AI service not available for logo generation');
-          return;
-        }
+        
+        // Even if aiService is not available, the generateProjectLogo function now handles fallbacks
+        // so we don't need to check for aiService availability here
         const logoData = await generateProjectLogo(
           projectName, 
           plan.projectDescription || '',
-          aiService
+          aiService // This can be null/undefined and will still work with fallbacks
         );
+        
+        // Set the logo data from either AI or fallback
         setLogo(logoData);
+        
+        // If this is a fallback logo, log it but don't show error to user
+        if (logoData.isFallback) {
+          console.log('Using fallback logo generation');
+        }
       } catch (error) {
         console.error('Error generating logo:', error);
+        // Even if there's an error, we'll still provide a fallback logo
+        const fallbackLogo = {
+          type: 'svg',
+          content: `<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <rect width="200" height="200" rx="40" fill="#4A90E2" opacity="0.9"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">${projectName.charAt(0).toUpperCase()}</text>
+          </svg>`,
+          concept: 'Simple initial logo',
+          isFallback: true
+        };
+        setLogo(fallbackLogo);
       } finally {
         setIsGeneratingLogo(false);
       }

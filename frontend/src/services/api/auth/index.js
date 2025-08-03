@@ -38,6 +38,7 @@ class AuthService {
     this.onAuthStateChanged = this.onAuthStateChanged.bind(this);
     this.notifyAuthStateChanged = this.notifyAuthStateChanged.bind(this);
     this.getIsAuthenticated = this.getIsAuthenticated.bind(this);
+    this.refreshToken = this.refreshToken.bind(this);
     
     // Initialize auth state
     if (typeof window !== 'undefined') {
@@ -115,7 +116,7 @@ class AuthService {
   async logout() {
     try {
       // Clear token from storage
-      tokenModule.clearAuthToken();
+      await tokenModule.clearAuthToken();
       
       // Update auth state
       this.isAuthenticated = false;
@@ -126,46 +127,242 @@ class AuthService {
       
       return true;
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Error during logout:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Refresh the authentication token
+   * @param {boolean} skipServerCheck - If true, skip server validation
+   * @returns {Promise<boolean>} True if token was refreshed successfully
+   */
+  async refreshToken(skipServerCheck = false) {
+    console.log('[AuthService] Attempting to refresh token');
+    try {
+      // Get current token
+      const currentToken = tokenModule.getAuthToken();
+      if (!currentToken) {
+        console.warn('[AuthService] No token to refresh');
+        return false;
+      }
+      
+      // Parse token to get refresh token if available
+      const decoded = tokenModule.parseToken(currentToken);
+      if (!decoded || !decoded.refreshToken) {
+        console.warn('[AuthService] No refresh token available');
+        return false;
+      }
+      
+      // Skip server check if requested (offline mode)
+      if (skipServerCheck) {
+        console.log('[AuthService] Skipping server validation for token refresh');
+        return true;
+      }
+      
+      // Call refresh endpoint
+      const refreshUrl = ENDPOINTS.AUTH.REFRESH;
+      const response = await fetchWithTimeout(refreshUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ refreshToken: decoded.refreshToken })
+      }, 5000);
+      
+      if (!response.ok) {
+        console.error('[AuthService] Token refresh failed:', response.status);
+        return false;
+      }
+      
+      // Get new token from response
+      const data = await response.json();
+      if (!data.token) {
+        console.error('[AuthService] No token in refresh response');
+        return false;
+      }
+      
+      // Store new token
+      await tokenModule.setAuthToken(data.token);
+      
+      // Update auth state based on new token
+      const newDecoded = tokenModule.parseToken(data.token);
+      if (newDecoded && newDecoded.user) {
+        this.currentUser = newDecoded.user;
+        this.isAuthenticated = true;
+        this.notifyAuthStateChanged();
+      }
+      
+      // Dispatch token refresh event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('token-refreshed', {
+          detail: { success: true }
+        }));
+      }
+      
+      console.log('[AuthService] Token refreshed successfully');
+      return true;
+    } catch (error) {
+      console.error('[AuthService] Error refreshing token:', error);
       return false;
     }
   }
 
   /**
-   * Check if the current user is authenticated
+   * Check if user is authenticated
+   * @param {boolean} skipServerCheck - If true, skip server validation
    * @returns {Promise<boolean>} True if authenticated
    */
-  async checkAuth() {
+  async checkAuth(skipServerCheck = false) {
     try {
+      // Store last check time to prevent frequent checks
+      if (!this._lastAuthCheck) {
+        this._lastAuthCheck = 0;
+      }
+      
+      // Get token from storage
       const token = tokenModule.getAuthToken();
       if (!token) {
-        this.isAuthenticated = false;
-        this.currentUser = null;
+        if (this.isAuthenticated) {
+          console.log('[Auth] No token found but was authenticated, updating state');
+          this.isAuthenticated = false;
+          this.currentUser = null;
+          this.notifyAuthStateChanged();
+        }
         return false;
       }
       
-      // Validate token with server
-      const response = await fetchWithTimeout(ENDPOINTS.VALIDATE_TOKEN, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // Parse token to check expiration
+      const decoded = tokenModule.parseToken(token);
+      if (!decoded) {
+        console.warn('[Auth] Invalid token format, clearing');
+        await tokenModule.clearAuthToken();
+        this.isAuthenticated = false;
+        this.currentUser = null;
+        this.notifyAuthStateChanged();
+        return false;
+      }
       
-      if (response.ok) {
-        const user = await response.json();
-        this.isAuthenticated = true;
-        this.currentUser = user;
+      // Check if token is expired
+      const now = Math.floor(Date.now() / 1000);
+      if (decoded.exp && decoded.exp <= now) {
+        console.warn('[Auth] Token expired, attempting refresh');
+        const refreshed = await this.refreshToken();
+        if (!refreshed) {
+          console.warn('[Auth] Token refresh failed, clearing token');
+          await tokenModule.clearAuthToken();
+          this.isAuthenticated = false;
+          this.currentUser = null;
+          this.notifyAuthStateChanged();
+          return false;
+        }
+        // If refresh succeeded, continue with validation
+      }
+      
+      // If we have a token and skipServerCheck is true, consider us authenticated
+      if (skipServerCheck) {
+        if (!this.isAuthenticated) {
+          if (decoded && decoded.user) {
+            this.currentUser = decoded.user;
+          } else {
+            this.currentUser = { id: 'local-user' };
+          }
+          this.isAuthenticated = true;
+          this.notifyAuthStateChanged();
+        }
         return true;
       }
       
-      // Token is invalid, clear it
-      this.isAuthenticated = false;
-      this.currentUser = null;
-      tokenModule.clearAuthToken();
-      return false;
+      // Check if we've validated recently (within last 5 minutes)
+      const timeSinceLastCheck = now * 1000 - this._lastAuthCheck;
+      if (timeSinceLastCheck < 5 * 60 * 1000) { // 5 minutes
+        console.log(`[Auth] Skipping validation, last check was ${Math.round(timeSinceLastCheck / 1000)}s ago`);
+        return this.isAuthenticated;
+      }
+      
+      // Validate token with server
+      console.log('[Auth] Validating token with server');
+      const validateUrl = ENDPOINTS.AUTH.VALIDATE;
+      const response = await fetchWithTimeout(validateUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }, 5000);
+      
+      // Update last check time
+      this._lastAuthCheck = now * 1000;
+      
+      if (!response.ok) {
+        console.warn(`[Auth] Token validation failed: ${response.status}`);
+        
+        // Try to refresh token on 401 Unauthorized
+        if (response.status === 401) {
+          console.log('[Auth] Attempting to refresh token after validation failure');
+          const refreshed = await this.refreshToken();
+          if (refreshed) {
+            console.log('[Auth] Token refreshed successfully after validation failure');
+            return true;
+          }
+          
+          // If refresh failed, clear token
+          console.warn('[Auth] Token refresh failed after validation failure, clearing token');
+          await tokenModule.clearAuthToken();
+          this.isAuthenticated = false;
+          this.currentUser = null;
+          this.notifyAuthStateChanged();
+        }
+        
+        return false;
+      }
+      
+      // Token is valid
+      const data = await response.json();
+      if (data.user) {
+        this.currentUser = data.user;
+      } else {
+        if (decoded && decoded.user) {
+          this.currentUser = decoded.user;
+        } else {
+          this.currentUser = { id: 'authenticated-user' };
+        }
+      }
+      
+      // Check if token needs to be refreshed soon (within 15 minutes)
+      if (decoded.exp && decoded.exp - now < 15 * 60) { // 15 minutes
+        console.log('[Auth] Token will expire soon, refreshing in background');
+        this.refreshToken().catch(error => {
+          console.error('[Auth] Background token refresh failed:', error);
+        });
+      }
+      
+      if (!this.isAuthenticated) {
+        this.isAuthenticated = true;
+        this.notifyAuthStateChanged();
+      }
+      
+      return true;
     } catch (error) {
-      console.error('Auth check error:', error);
-      this.isAuthenticated = false;
-      this.currentUser = null;
-      return false;
+      console.error('[Auth] Error checking auth:', error);
+      
+      // On network error, don't clear token - just use what we have
+      // This allows offline usage when server is unavailable
+      if (!this.isAuthenticated) {
+        const token = tokenModule.getAuthToken();
+        if (token) {
+          const decoded = tokenModule.parseToken(token);
+          if (decoded && decoded.user) {
+            this.currentUser = decoded.user;
+          } else {
+            this.currentUser = { id: 'offline-user' };
+          }
+          this.isAuthenticated = true;
+          this.notifyAuthStateChanged();
+        }
+      }
+      
+      return this.isAuthenticated;
     }
   }
 

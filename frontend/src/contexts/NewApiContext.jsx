@@ -557,84 +557,87 @@ export const ApiProvider = ({ children }) => {
     },
     // Get projects with fallback to local storage
     getProjects: async (forceRefresh = false) => {
+      console.log('[getProjects] Fetching projects, forceRefresh:', forceRefresh);
+      
       try {
-        console.log('[getProjects] Fetching projects, forceRefresh:', forceRefresh);
-        
         // Helper function to get projects from IndexedDB
-      const getProjectsFromIndexedDB = async () => {
-        try {
-          if (!window.indexedDB) {
-            console.log('[IndexedDB] IndexedDB not available');
-            return [];
-          }
-          
-          return new Promise((resolve) => {
-            const request = indexedDB.open('CoderProjectsDB', 1);
+        const getProjectsFromIndexedDB = async () => {
+          try {
+            if (!window.indexedDB) {
+              console.log('[IndexedDB] IndexedDB not available');
+              return [];
+            }
             
-            request.onsuccess = (event) => {
-              const db = event.target.result;
-              const transaction = db.transaction(['projects'], 'readonly');
-              const store = transaction.objectStore('projects');
-              const getRequest = store.getAll();
+            return new Promise((resolve) => {
+              const request = indexedDB.open('CoderProjectsDB', 1);
               
-              getRequest.onsuccess = () => {
-                const projects = Array.isArray(getRequest.result) ? getRequest.result : [];
-                console.log(`[IndexedDB] Retrieved ${projects.length} projects`);
-                resolve(projects);
+              request.onsuccess = (event) => {
+                const db = event.target.result;
+                const transaction = db.transaction(['projects'], 'readonly');
+                const store = transaction.objectStore('projects');
+                const getRequest = store.getAll();
+                
+                getRequest.onsuccess = () => {
+                  const projects = Array.isArray(getRequest.result) ? getRequest.result : [];
+                  console.log(`[IndexedDB] Retrieved ${projects.length} projects`);
+                  resolve(projects);
+                };
+                
+                getRequest.onerror = (error) => {
+                  console.warn('[IndexedDB] Error getting projects:', error);
+                  resolve([]);
+                };
+                
+                // Close the database connection when done
+                transaction.oncomplete = () => db.close();
               };
               
-              getRequest.onerror = (error) => {
-                console.warn('[IndexedDB] Error getting projects:', error);
+              request.onerror = (error) => {
+                console.warn('[IndexedDB] Failed to open database:', error);
                 resolve([]);
               };
               
-              // Close the database connection when done
-              transaction.oncomplete = () => db.close();
-            };
-            
-            request.onerror = (error) => {
-              console.warn('[IndexedDB] Failed to open database:', error);
-              resolve([]);
-            };
-            
-            request.onupgradeneeded = (event) => {
-              const db = event.target.result;
-              if (!db.objectStoreNames.contains('projects')) {
-                db.createObjectStore('projects', { keyPath: 'id' });
-              }
-            };
-          });
-        } catch (error) {
-          console.error('[IndexedDB] Unexpected error in getProjectsFromIndexedDB:', error);
-          return [];
-        }
-      };
-      
-      // Helper function to get projects from localStorage
-      const getProjectsFromLocalStorage = () => {
-        try {
-          const projects = JSON.parse(localStorage.getItem('projects') || '[]');
-          return Array.isArray(projects) ? projects : [];
-        } catch (error) {
-          console.error('[LocalStorage] Error parsing projects:', error);
-          return [];
-        }
-      };
-      
-      // Helper function to validate project data
-      const validateProjects = (projects) => {
-        if (!Array.isArray(projects)) return [];
-        return projects.filter(project => 
-          project && 
-          typeof project === 'object' && 
-          project.id && 
-          typeof project.id === 'string'
-        );
-      };
-      
-      try {
-        // Try to get projects from API first if not forcing refresh
+              request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('projects')) {
+                  db.createObjectStore('projects', { keyPath: 'id' });
+                }
+              };
+            });
+          } catch (error) {
+            console.error('[IndexedDB] Unexpected error in getProjectsFromIndexedDB:', error);
+            return [];
+          }
+        };
+        
+        // Helper function to get projects from localStorage
+        const getProjectsFromLocalStorage = () => {
+          try {
+            const projects = JSON.parse(localStorage.getItem('projects') || '[]');
+            return Array.isArray(projects) ? projects : [];
+          } catch (error) {
+            console.error('[LocalStorage] Error parsing projects:', error);
+            return [];
+          }
+        };
+        
+        // Helper function to validate project data
+        const validateProjects = (projects) => {
+          if (!Array.isArray(projects)) return [];
+          return projects.filter(project => 
+            project && 
+            typeof project === 'object' && 
+            project.id && 
+            typeof project.id === 'string'
+          );
+        };
+        
+        // Try to get projects from all sources
         let apiProjects = [];
+        let indexedDBProjects = [];
+        let localStorageProjects = [];
+        
+        // Try to get projects from API first if not forcing refresh
         if (api.getProjects && typeof api.getProjects === 'function') {
           try {
             // Check if we have a valid token before making the API call
@@ -664,18 +667,25 @@ export const ApiProvider = ({ children }) => {
             if (apiError.response?.status === 401) {
               console.warn('[API] Authentication failed, clearing token');
               await api.clearAuthToken();
-              // Redirect to login page if not already there
-              if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-              }
             }
           }
+        }
         
         // Get projects from IndexedDB
-        const indexedDBProjects = await getProjectsFromIndexedDB();
+        try {
+          indexedDBProjects = await getProjectsFromIndexedDB();
+          console.log(`[IndexedDB] Retrieved ${indexedDBProjects.length} projects`);
+        } catch (dbError) {
+          console.warn('[IndexedDB] Error getting projects:', dbError);
+        }
         
         // Get projects from localStorage
-        const localStorageProjects = getProjectsFromLocalStorage();
+        try {
+          localStorageProjects = getProjectsFromLocalStorage();
+          console.log(`[LocalStorage] Retrieved ${localStorageProjects.length} projects`);
+        } catch (lsError) {
+          console.warn('[LocalStorage] Error getting projects:', lsError);
+        }
         
         // Merge all projects, giving priority to API projects, then IndexedDB, then localStorage
         const projectMap = new Map();
@@ -782,11 +792,32 @@ export const ApiProvider = ({ children }) => {
       }
     },
     
-    // AI Service with null check
+    // AI Service with robust fallback implementation
     aiService: api.ai || {
-      chat: async () => { throw new Error('AI service not available'); },
-      execute: async () => { throw new Error('AI service not available'); },
-      isAvailable: () => false
+      // Fallback chat implementation that returns a friendly message instead of throwing an error
+      chat: async (prompt) => {
+        console.log('[AI Service Fallback] Chat request received:', prompt);
+        return {
+          choices: [{
+            message: {
+              content: 'AI service is currently unavailable. Using fallback response.'
+            }
+          }],
+          fallback: true
+        };
+      },
+      // Fallback execute implementation that returns a default response
+      execute: async (command, params) => {
+        console.log('[AI Service Fallback] Execute request received:', command, params);
+        return {
+          result: 'AI service is currently unavailable. Using fallback response.',
+          fallback: true
+        };
+      },
+      // Helper to check if AI is available
+      isAvailable: () => false,
+      // Flag to indicate this is a fallback implementation
+      isFallback: true
     },
     
     // State
@@ -854,7 +885,7 @@ export const ApiProvider = ({ children }) => {
         console.error('Error in clearAuthToken:', error);
         return false;
       }
-    },
+    }
   };
 
   return (

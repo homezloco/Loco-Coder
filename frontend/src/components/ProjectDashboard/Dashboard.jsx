@@ -149,8 +149,10 @@ const Dashboard = ({
   // Listen for auth state changes
   useEffect(() => {
     const handleAuthStateChanged = (event) => {
+      console.log('[Dashboard] Auth state changed event received:', event.detail);
+      
       if (event.detail?.isAuthenticated) {
-        console.log('Auth state changed - user authenticated, loading projects...');
+        console.log('[Dashboard] User authenticated, loading projects...');
         const controller = new AbortController();
         loadProjects(controller.signal);
         
@@ -163,17 +165,116 @@ const Dashboard = ({
           controller.abort();
           clearTimeout(retryTimeout);
         };
+      } else if (event.detail?.isAuthenticated === false) {
+        console.log('[Dashboard] User logged out, clearing projects');
+        // Clear projects when user logs out
+        setProjects([]);
+        setFilteredProjects([]);
+        setDataSource('none');
+        setApiStatus({ status: 'unauthenticated', message: 'Not logged in' });
       }
     };
     
     // Add event listener for auth state changes
     window.addEventListener('auth-state-changed', handleAuthStateChanged);
     
-    // Clean up event listener on unmount
+    // Add event listener for token refresh events
+    const handleTokenRefresh = (event) => {
+      console.log('[Dashboard] Token refresh event received');
+      // Re-initialize auth token and reload projects if token was refreshed
+      if (event.detail?.success) {
+        initializeAuthToken().then(isValid => {
+          if (isValid) {
+            loadProjects();
+          }
+        });
+      }
+    };
+    window.addEventListener('token-refreshed', handleTokenRefresh);
+    
+    // Clean up event listeners on unmount
     return () => {
       window.removeEventListener('auth-state-changed', handleAuthStateChanged);
+      window.removeEventListener('token-refreshed', handleTokenRefresh);
     };
-  }, [loadProjects]);
+  }, [loadProjects, initializeAuthToken]);
+  
+  // Initialize authentication token before API calls
+  const initializeAuthToken = useCallback(async () => {
+    console.log('[Dashboard] Initializing authentication token');
+    try {
+      // Try to dynamically import the token module
+      const tokenModule = await import('../../services/api/auth/token');
+      if (!tokenModule || typeof tokenModule.getAuthToken !== 'function') {
+        console.warn('[Dashboard] Token module not available');
+        return false;
+      }
+      
+      // Get the token and validate it
+      const token = tokenModule.getAuthToken();
+      if (!token) {
+        console.warn('[Dashboard] No authentication token found');
+        return false;
+      }
+      
+      // Parse and validate token
+      if (typeof tokenModule.parseToken === 'function') {
+        const decoded = tokenModule.parseToken(token);
+        if (!decoded) {
+          console.warn('[Dashboard] Invalid token format');
+          return false;
+        }
+        
+        // Check if token is expired or about to expire (within 5 minutes)
+        const now = Math.floor(Date.now() / 1000);
+        if (decoded.exp && decoded.exp - now < 300) { // 5 minutes
+          console.warn('[Dashboard] Token expired or about to expire, attempting refresh');
+          
+          // Try to refresh the token
+          try {
+            // Try to import auth service
+            const authModule = await import('../../services/api/auth');
+            if (authModule && authModule.default && typeof authModule.default.refreshToken === 'function') {
+              const refreshed = await authModule.default.refreshToken();
+              if (refreshed) {
+                console.log('[Dashboard] Token refreshed successfully');
+                return true;
+              }
+            } else {
+              console.warn('[Dashboard] Auth module not available for token refresh');
+            }
+          } catch (refreshError) {
+            console.error('[Dashboard] Error refreshing token:', refreshError);
+          }
+          
+          // If we reach here, refresh failed
+          if (decoded.exp <= now) {
+            console.warn('[Dashboard] Token expired and refresh failed');
+            return false;
+          }
+        }
+      }
+      
+      console.log('[Dashboard] Valid authentication token found');
+      return true;
+    } catch (error) {
+      console.error('[Dashboard] Error initializing authentication token:', error);
+      return false;
+    }
+  }, []);
+
+  // Helper function to deduplicate projects by ID
+  const deduplicateProjects = (projects) => {
+    if (!Array.isArray(projects)) return [];
+    
+    const seen = new Set();
+    return projects.filter(project => {
+      if (!project || !project.id) return false;
+      if (seen.has(project.id)) return false;
+      seen.add(project.id);
+      return true;
+    });
+  };
   
   // Load projects with robust multi-tiered fallback
   const loadProjects = useCallback(async (abortSignal) => {
@@ -182,6 +283,9 @@ const Dashboard = ({
     
     setIsLoading(true);
     setError(null);
+    
+    // Initialize authentication token before making API calls
+    await initializeAuthToken();
     
     try {
       console.log('Checking API health...');
@@ -205,11 +309,17 @@ const Dashboard = ({
       console.log('Projects loaded from source:', result.source);
       console.log(`Found ${result.projects.length} projects`);
       
+      // Deduplicate projects to prevent storage quota issues
+      const dedupedProjects = deduplicateProjects(result.projects);
+      if (dedupedProjects.length !== result.projects.length) {
+        console.log(`[Dashboard] Removed ${result.projects.length - dedupedProjects.length} duplicate projects`);
+      }
+      
       // Update projects state
       setProjects(prevProjects => {
         // Only update if the projects have actually changed
-        const projectsChanged = JSON.stringify(prevProjects) !== JSON.stringify(result.projects);
-        return projectsChanged ? result.projects : prevProjects;
+        const projectsChanged = JSON.stringify(prevProjects) !== JSON.stringify(dedupedProjects);
+        return projectsChanged ? dedupedProjects : prevProjects;
       });
       
       // Apply filters to the loaded projects

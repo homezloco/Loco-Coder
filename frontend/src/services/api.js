@@ -10,6 +10,7 @@ import authService from './api/auth';
 import projectService from './api/projects';
 import fileService from './api/files';
 import templateService from './api/templates';
+import tokenModule from './api/auth/token';
 
 // AI service instance
 let aiService = null;
@@ -149,11 +150,11 @@ const api = {
     }
     
     try {
-      // Store the token in localStorage
-      localStorage.setItem('authToken', token);
+      // Use the centralized token module to store the token
+      const success = tokenModule.setAuthToken(token, options.remember);
       
       // Update axios default headers
-      if (typeof axios !== 'undefined') {
+      if (typeof axios !== 'undefined' && success) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       }
       
@@ -168,7 +169,7 @@ const api = {
         }
       }
       
-      return true;
+      return success;
     } catch (error) {
       console.error('Failed to set auth token:', error);
       return false;
@@ -177,10 +178,8 @@ const api = {
   
   getAuthToken: () => {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        console.warn('No auth token found in localStorage');
-      }
+      // Use the centralized token module to get the token
+      const token = tokenModule.getAuthToken();
       return token;
     } catch (error) {
       console.error('Failed to get auth token:', error);
@@ -190,12 +189,15 @@ const api = {
   
   clearAuthToken: () => {
     try {
-      localStorage.removeItem('authToken');
+      // Use the centralized token module to clear the token
+      const success = tokenModule.clearAuthToken();
+      
+      // Also clear the Authorization header
       if (typeof axios !== 'undefined') {
         delete axios.defaults.headers.common['Authorization'];
       }
-      console.log('[API] Auth token cleared');
-      return true;
+      
+      return success;
     } catch (error) {
       console.error('Failed to clear auth token:', error);
       return false;
@@ -211,14 +213,44 @@ const api = {
       return false;
     }
   },
-  validateAndSyncToken: async () => {
+  validateAndSyncToken: async (forceCheck = false) => {
+    // Store last check time to prevent frequent checks
+    if (!api._lastTokenCheck) {
+      api._lastTokenCheck = 0;
+    }
+    
+    // Skip frequent checks unless forced
+    const now = Date.now();
+    if (!forceCheck && (now - api._lastTokenCheck) < 2000) {
+      return api.isAuthenticated();
+    }
+    
+    api._lastTokenCheck = now;
     console.log('[API] Validating and syncing token');
+    
     try {
-      const result = await authService.verifyToken();
-      return result.valid || false;
+      // First check if we have a token at all
+      const token = api.getAuthToken();
+      if (!token) {
+        return false;
+      }
+      
+      // Try to verify the token with the server
+      const result = await authService.checkAuth();
+      
+      // If server says we're not authenticated but we have a token,
+      // clear the token to prevent further failed requests
+      if (!result && token) {
+        console.log('[API] Token validation failed, clearing token');
+        api.clearAuthToken();
+      }
+      
+      return result || false;
     } catch (error) {
       console.error('[API] Token validation failed:', error);
-      return false;
+      // Don't clear token on network errors - it might still be valid
+      // when connectivity is restored
+      return api.isAuthenticated();
     }
   },
   

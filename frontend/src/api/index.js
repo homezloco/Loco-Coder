@@ -15,31 +15,77 @@ const importAiService = async () => {
     
     // Import the AI service module
     const module = await import('./modules/ai.js');
-    console.log('[API] AI module imported successfully');
+    console.log('[API] AI module imported successfully:', Object.keys(module));
     
-    // Get the default export or the module itself if it's a direct export
-    const aiService = module.default || module;
-    
-    // Log basic info about the imported service
-    console.log('[API] AI service methods:', 
-      Object.keys(aiService).filter(k => typeof aiService[k] === 'function')
-    );
-    
-    // Validate the service has the required methods
-    if (!aiService) {
-      throw new Error('AI service import returned undefined or null');
+    // Check if the module exports createAiService function
+    if (typeof module.createAiService === 'function') {
+      console.log('[API] Found createAiService function, creating AI service instance...');
+      try {
+        // Create an instance of the AI service
+        const aiService = await module.createAiService();
+        
+        console.log('[API] AI service instance created with properties:', {
+          properties: Object.getOwnPropertyNames(aiService),
+          methods: Object.getOwnPropertyNames(aiService).filter(k => typeof aiService[k] === 'function'),
+          hasChat: 'chat' in aiService,
+          chatType: typeof aiService.chat
+        });
+        
+        // Validate the service has the required methods
+        if (!aiService) {
+          throw new Error('AI service creation returned undefined or null');
+        }
+        
+        // If chat method doesn't exist, create a fallback
+        if (typeof aiService.chat !== 'function') {
+          console.warn('[API] Chat method not found on AI service instance, creating fallback');
+          
+          // Create a fallback chat method
+          aiService.chat = async function(prompt, options = {}) {
+            console.log('[API] Using fallback chat method');
+            return { response: 'AI service chat method not available', error: true };
+          };
+          
+          console.log('[API] Added fallback chat method to AI service');
+        }
+        
+        return aiService;
+      } catch (createError) {
+        console.error('[API] Error creating AI service instance:', createError);
+        throw createError;
+      }
+    } else {
+      // Fall back to using the module itself as the service
+      console.log('[API] No createAiService function found, using module as service');
+      
+      // Get the default export or the module itself if it's a direct export
+      const aiService = module.default || module;
+      
+      // Log basic info about the imported service
+      console.log('[API] AI service methods:', 
+        Object.keys(aiService).filter(k => typeof aiService[k] === 'function')
+      );
+      
+      // Validate the service has the required methods
+      if (!aiService) {
+        throw new Error('AI service import returned undefined or null');
+      }
+      
+      // If chat method doesn't exist, create a fallback
+      if (typeof aiService.chat !== 'function') {
+        console.warn('[API] Chat method not found on AI service, creating fallback');
+        
+        // Create a fallback chat method
+        aiService.chat = async function(prompt, options = {}) {
+          console.log('[API] Using fallback chat method');
+          return { response: 'AI service chat method not available', error: true };
+        };
+        
+        console.log('[API] Added fallback chat method to AI service');
+      }
+      
+      return aiService;
     }
-    
-    // Check for chat method (support both direct and nested send)
-    const hasChatMethod = typeof aiService.chat === 'function' || 
-                         (aiService.chat && typeof aiService.chat.send === 'function');
-    
-    if (!hasChatMethod) {
-      console.error('[API] AI service is missing required chat method');
-      throw new Error('AI service is missing required chat method');
-    }
-    
-    return aiService;
   } catch (error) {
     console.error('[API] Failed to import AI service:', error);
     throw error;

@@ -5,6 +5,7 @@ import { useProject } from '../../contexts/NewProjectContext';
 import { useApi } from '../../contexts/NewApiContext';
 import { useFeedback } from '../../components/feedback/FeedbackContext';
 import AppLayout from './AppLayout';
+import AppHeader from './AppHeader';
 import Login from '../../pages/Login';
 import LoadingSpinner from '../common/LoadingSpinner';
 import DashboardV2 from '../ProjectDashboard/DashboardV2';
@@ -105,9 +106,37 @@ const AppMain = () => {
 
   // Show dashboard if no project is selected
   if (!currentProject && !projectLoading) {
+    // Get auth state for header
+    const { user, isAuthenticated } = useAuth();
+    const username = user?.username || user?.email || 'User';
+    
+    // Create header props
+    const headerProps = {
+      authenticated: isAuthenticated,
+      showProjectDashboard: true,
+      currentProject: null,
+      currentFile: null,
+      loading: false,
+      username,
+      isAdmin: user?.isAdmin || false,
+      isDarkMode: settings?.theme === 'dark',
+      apiStatus: { available: true },
+      chatPanelVisible: false,
+      toggleUserProfile: () => console.log('User profile toggle'),
+      toggleChatPanel: () => console.log('Chat panel toggle'),
+      toggleProjectDashboard: () => console.log('Project dashboard toggle'),
+      toggleDarkMode: () => console.log('Dark mode toggle'),
+      onLogin: () => console.log('Login'),
+      getBreadcrumbPaths: () => [],
+      handleBreadcrumbNavigate: () => {}
+    };
+    
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <DashboardV2 />
+        <AppHeader {...headerProps} />
+        <div className="pt-16"> {/* Add padding to account for fixed header */}
+          <DashboardV2 isDarkMode={settings?.theme === 'dark'} />
+        </div>
       </div>
     );
   }

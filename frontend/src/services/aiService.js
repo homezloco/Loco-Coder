@@ -47,14 +47,35 @@ export const generateProjectName = async (description) => {
  * Generate a project logo using AI
  * @param {string} projectName - Name of the project
  * @param {string} description - Project description
+ * @param {Object} aiService - AI service instance
  * @returns {Promise<Object>} - Logo data (SVG or image URL)
  */
 export const generateProjectLogo = async (projectName, description, aiService) => {
-  try {
-    if (!aiService) {
-      throw new Error('AI service is required to generate project logo');
-    }
-    
+  // Early return with fallback if no AI service is provided
+  if (!aiService) {
+    console.warn('AI service not provided for logo generation, using fallback');
+    return {
+      type: 'svg',
+      content: generateFallbackSvg(projectName),
+      concept: 'Minimalist initial-based logo with gradient background',
+      generatedAt: new Date().toISOString(),
+      isFallback: true
+    };
+  }
+  
+  // Check if this is a fallback AI service implementation
+  if (aiService.isFallback) {
+    console.log('Using fallback AI service for logo generation');
+    return {
+      type: 'svg',
+      content: generateFallbackSvg(projectName),
+      concept: 'Minimalist initial-based logo with gradient background',
+      generatedAt: new Date().toISOString(),
+      isFallback: true
+    };
+  }
+  
+  try {    
     // First, generate a logo concept
     const conceptResponse = await aiService.chat(
       `Generate a simple, modern, and abstract logo concept for a project called "${projectName}". ` +
@@ -62,6 +83,17 @@ export const generateProjectLogo = async (projectName, description, aiService) =
       `Provide a brief description of the logo design in one sentence, focusing on shapes, colors, and style. ` +
       `Example: "A minimalist circular logo with a gradient from blue to purple, featuring an abstract 'W' shape in the center."`
     );
+    
+    // Check if we got a fallback response
+    if (conceptResponse.fallback) {
+      return {
+        type: 'svg',
+        content: generateFallbackSvg(projectName),
+        concept: 'Minimalist initial-based logo with gradient background',
+        generatedAt: new Date().toISOString(),
+        isFallback: true
+      };
+    }
     
     const logoConcept = conceptResponse.choices[0].message.content.trim();
     
@@ -72,6 +104,17 @@ export const generateProjectLogo = async (projectName, description, aiService) =
       `The SVG should be 200x200 pixels with a viewBox="0 0 200 200". ` +
       `Use simple shapes and a clean, modern design.`
     );
+    
+    // Check if we got a fallback response
+    if (svgResponse.fallback) {
+      return {
+        type: 'svg',
+        content: generateFallbackSvg(projectName),
+        concept: 'Minimalist initial-based logo with gradient background',
+        generatedAt: new Date().toISOString(),
+        isFallback: true
+      };
+    }
     
     let svg = svgResponse.choices[0].message.content.trim();
     
