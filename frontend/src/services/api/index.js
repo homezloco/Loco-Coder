@@ -6,90 +6,210 @@ import * as files from './files';
 import * as templates from './templates';
 
 // Import AI service factory function with debug logging
-console.log('Importing AI service factory...');
+console.log('[API] Importing AI service factory...');
 import { createAiService } from '../../api/modules/ai';
+console.log('[API] AI service import complete, type:', typeof createAiService);
 
 // Create AI service instance
 let aiServiceInstance = null;
 let isAiServiceInitialized = false;
+let aiServiceInitializationError = null;
+let aiServiceInitializationPromise = null;
+
+// Helper function to get all methods from an object's prototype chain
+const getAllMethods = (obj) => {
+  let methods = new Set();
+  let current = obj;
+  
+  while (current && current !== Object.prototype) {
+    const props = Object.getOwnPropertyNames(current)
+      .filter(prop => typeof current[prop] === 'function' && prop !== 'constructor');
+    props.forEach(method => methods.add(method));
+    current = Object.getPrototypeOf(current);
+  }
+  
+  return Array.from(methods);
+};
 
 // Initialize AI service asynchronously
-const initAiService = async () => {
-  if (isAiServiceInitialized) {
+const initializeAiService = async (options = {}) => {
+  const { retry = false } = options;
+  
+  console.log(`[API] ${retry ? 'Retrying' : 'Initializing'} AI service...`);
+  
+  // If already initialized and not retrying, return the existing instance
+  if (isAiServiceInitialized && aiServiceInstance && !retry) {
+    console.log('[API] Using existing AI service instance');
     return aiServiceInstance;
   }
   
-  console.log('Initializing AI service...');
-  try {
-    aiServiceInstance = createAiService();
-    isAiServiceInitialized = true;
-    console.log('AI service initialized successfully', {
-      methods: aiServiceInstance ? Object.keys(aiServiceInstance).filter(k => typeof aiServiceInstance[k] === 'function') : []
-    });
-    return aiServiceInstance;
-  } catch (error) {
-    console.error('Failed to initialize AI service:', error);
-    throw error;
+  // If initialization is in progress and not retrying, return the existing promise
+  if (aiServiceInitializationPromise && !retry) {
+    console.log('[API] AI service initialization already in progress');
+    return aiServiceInitializationPromise;
   }
+  
+  // If there was a previous error and we're not retrying, throw it
+  if (aiServiceInitializationError && !retry) {
+    console.log('[API] Re-throwing previous AI service initialization error');
+    throw aiServiceInitializationError;
+  }
+  
+  // Reset error if retrying
+  if (retry) {
+    aiServiceInitializationError = null;
+  }
+  
+  // Create a new initialization promise
+  aiServiceInitializationPromise = (async () => {
+    try {
+      console.log('[API] Creating new AI service instance...');
+      
+      // Create the AI service instance
+      console.log('[API] Calling createAiService()...');
+      const service = await createAiService();
+      console.log('[API] createAiService() completed');
+      
+      if (!service) {
+        throw new Error('createAiService() returned undefined');
+      }
+      
+      // Log available methods for debugging
+      const methods = [];
+      let current = service;
+      while (current && current !== Object.prototype) {
+        const props = Object.getOwnPropertyNames(current)
+          .filter(prop => typeof current[prop] === 'function' && prop !== 'constructor');
+        methods.push(...props);
+        current = Object.getPrototypeOf(current);
+      }
+      
+      const uniqueMethods = [...new Set(methods)];
+      console.log('[API] AI service methods:', uniqueMethods);
+      
+      // Verify chat method exists and is a function
+      if (typeof service.chat !== 'function') {
+        const error = new Error(`AI service is missing required 'chat' method. Available methods: ${uniqueMethods.join(', ')}`);
+        error.availableMethods = uniqueMethods;
+        throw error;
+      }
+      
+      // Perform a health check (non-blocking)
+      service.checkHealth()
+        .then(isHealthy => {
+          if (!isHealthy) {
+            console.warn('[API] AI service health check failed');
+          } else {
+            console.log('[API] AI service health check passed');
+          }
+        })
+        .catch(healthError => {
+          console.warn('[API] AI service health check failed:', healthError);
+        });
+      
+      // Store the initialized service
+      aiServiceInstance = service;
+      isAiServiceInitialized = true;
+      aiServiceInitializationError = null;
+      
+      console.log('[API] AI service initialized successfully');
+      
+      return service;
+    } catch (error) {
+      console.error('[API] Failed to initialize AI service:', error);
+      aiServiceInitializationError = error;
+      
+      // Add retry logic for transient errors
+      if (error.message.includes('timeout') || error.message.includes('connection')) {
+        console.log('[API] Will retry AI service initialization after delay...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return initializeAiService({ retry: true });
+      }
+      
+      throw error;
+    } finally {
+      // Reset the initialization promise so we can retry if needed
+      if (!retry) {
+        aiServiceInitializationPromise = null;
+      }
+    }
+  })();
+  
+  return aiServiceInitializationPromise;
 };
-
-// Initialize AI service immediately
-initAiService().catch(console.error);
 
 // Create a proxy for the AI service that handles initialization
 const aiServiceProxy = new Proxy({}, {
   get(target, prop) {
-    // If the service is initialized, return the method directly
+    // Special handling for 'then' to support await
+    if (prop === 'then') {
+      return undefined;
+    }
+    
+    // If the property exists on the target, return it
+    if (prop in target) {
+      const value = target[prop];
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+    
+    // If the AI service is already initialized, try to get the property from it
     if (isAiServiceInitialized && aiServiceInstance) {
-      const method = aiServiceInstance[prop];
-      if (typeof method === 'function') {
-        return method.bind(aiServiceInstance);
+      const value = aiServiceInstance[prop];
+      if (typeof value === 'function') {
+        return value.bind(aiServiceInstance);
       }
-      return method;
+      return value;
     }
     
-    // If the service isn't initialized yet, return a function that will wait for initialization
-    if (prop in (aiServiceInstance || {})) {
-      return async (...args) => {
-        if (!isAiServiceInitialized || !aiServiceInstance) {
-          console.log('[API] AI service not yet initialized, initializing...');
-          try {
-            await initAiService();
-          } catch (error) {
-            console.error('[API] Failed to initialize AI service:', error);
-            throw new Error('AI service is not available');
-          }
+    // If we get here, the property doesn't exist on the target or the AI service isn't initialized yet
+    // Return a function that will wait for initialization and then call the method
+    return async function(...args) {
+      try {
+        // Wait for the AI service to be initialized
+        const service = await initializeAiService();
+        
+        // Check if the method exists on the service
+        if (typeof service[prop] !== 'function') {
+          throw new Error(`Method '${prop}' does not exist on AI service`);
         }
-        return aiServiceInstance[prop](...args);
-      };
-    }
-    
-    // For non-function properties, wait for initialization and return the value
-    return (async () => {
-      if (!isAiServiceInitialized) {
-        console.log('AI service not yet initialized, waiting for property access...');
-        await initAiService();
+        
+        // Call the method with the provided arguments
+        return service[prop](...args);
+      } catch (error) {
+        console.error(`[API] Error accessing AI service method '${prop}':`, error);
+        throw error;
       }
-      return aiServiceInstance[prop];
-    })();
+    };
   },
   
   // Handle property existence checks
   has(target, prop) {
-    return isAiServiceInitialized ? (prop in aiServiceInstance) : true;
+    // If the AI service is initialized, check if the property exists on it
+    if (isAiServiceInitialized && aiServiceInstance) {
+      return prop in aiServiceInstance || prop in target;
+    }
+    // Otherwise, assume the property exists (will be checked when accessed)
+    return true;
   },
   
   // Handle Object.keys() and similar operations
   ownKeys() {
-    if (!isAiServiceInitialized) {
-      console.warn('AI service not yet initialized, returning empty key list');
-      return [];
+    // Return a list of all available methods on the AI service
+    if (aiServiceInstance) {
+      return Reflect.ownKeys(aiServiceInstance)
+        .filter(prop => typeof aiServiceInstance[prop] === 'function' && prop !== 'constructor');
     }
-    return Reflect.ownKeys(aiServiceInstance);
+    return [];
   },
   
   // Handle property enumeration
-  getOwnPropertyDescriptor() {
+  getOwnPropertyDescriptor(target, prop) {
+    // If the AI service is initialized, get the property descriptor from it
+    if (isAiServiceInitialized && aiServiceInstance && prop in aiServiceInstance) {
+      return Object.getOwnPropertyDescriptor(aiServiceInstance, prop);
+    }
+    
+    // Otherwise, return a default descriptor
     return {
       configurable: true,
       enumerable: true,
@@ -97,6 +217,9 @@ const aiServiceProxy = new Proxy({}, {
     };
   }
 });
+
+// Initialize AI service immediately
+initializeAiService().catch(console.error);
 
 // Debug log to verify token methods are imported
 console.log('API Module - Token methods:', {
@@ -148,7 +271,7 @@ class ApiClient {
     this.isAiAvailable = async () => {
       if (!isAiServiceInitialized || !aiServiceInstance) {
         try {
-          await initAiService();
+          await initializeAiService();
           return true;
         } catch (error) {
           console.error('[API] AI service not available:', error);

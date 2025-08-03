@@ -1,5 +1,5 @@
 // Test file to verify the simplified AI service
-import aiService from './ai-service';
+import { createAiService } from './modules/ai';
 
 console.log('[Test] Starting AI service test...');
 console.log('[Test] AI Service:', aiService);

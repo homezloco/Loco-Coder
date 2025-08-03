@@ -1,6 +1,6 @@
 import { ENDPOINTS } from '../../../config';
 import { fetchWithTimeout } from '../../utils/fetch';
-import { handleApiError } from '../../utils/errors';
+import { handleApiError, BadRequestError } from '../../utils/errors';
 
 /**
  * Service for handling file-related API operations
@@ -23,12 +23,12 @@ class FileService {
    */
   async getProjectFiles(projectId, options = {}) {
     if (!projectId) {
-      throw new Error('Project ID is required');
+      throw new BadRequestError('Project ID is required');
     }
 
     try {
       const response = await fetchWithTimeout(
-        ENDPOINTS.PROJECTS.FILES(projectId),
+        `${ENDPOINTS.BASE}/project/${projectId}/files`,
         {
           method: 'GET',
           ...options,
@@ -36,13 +36,98 @@ class FileService {
       );
 
       if (!response.ok) {
-        throw await handleApiError(response);
+        throw new Error(`Failed to fetch project files: ${response.status} ${response.statusText}`);
       }
 
       const files = await response.json();
       return Array.isArray(files) ? files : [];
     } catch (error) {
       console.error(`[FileService] Error fetching files for project ${projectId}:`, error);
+      // Return empty array to maintain backward compatibility
+      return [];
+    }
+  }
+
+  /**
+   * Read the content of a file
+   * @param {string} projectId - The project ID
+   * @param {string} filePath - Path to the file within the project
+   * @param {Object} options - Fetch options
+   * @returns {Promise<string>} The file content
+   */
+  async readFile(projectId, filePath, options = {}) {
+    if (!projectId || !filePath) {
+      throw new BadRequestError('Project ID and file path are required');
+    }
+
+    try {
+      const response = await fetchWithTimeout(
+        `${ENDPOINTS.BASE}/project/file/read`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+          body: JSON.stringify({
+            project_id: projectId,
+            file_path: filePath,
+          }),
+          ...options,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.content || '';
+    } catch (error) {
+      console.error(`[FileService] Error reading file ${filePath} in project ${projectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Write content to a file
+   * @param {string} projectId - The project ID
+   * @param {string} filePath - Path to the file within the project
+   * @param {string} content - The content to write
+   * @param {Object} options - Fetch options
+   * @returns {Promise<Object>} The server response
+   */
+  async writeFile(projectId, filePath, content, options = {}) {
+    if (!projectId || !filePath) {
+      throw new BadRequestError('Project ID and file path are required');
+    }
+
+    try {
+      const response = await fetchWithTimeout(
+        `${ENDPOINTS.BASE}/project/file/write`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+          body: JSON.stringify({
+            project_id: projectId,
+            file_path: filePath,
+            content: content,
+          }),
+          ...options,
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to write file');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`[FileService] Error writing to file ${filePath} in project ${projectId}:`, error);
       throw error;
     }
   }

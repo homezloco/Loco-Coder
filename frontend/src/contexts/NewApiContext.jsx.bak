@@ -557,10 +557,9 @@ export const ApiProvider = ({ children }) => {
     },
     // Get projects with fallback to local storage
     getProjects: async (forceRefresh = false) => {
-      try {
-        console.log('[getProjects] Fetching projects, forceRefresh:', forceRefresh);
-        
-        // Helper function to get projects from IndexedDB
+      console.log('[getProjects] Fetching projects, forceRefresh:', forceRefresh);
+      
+      // Helper function to get projects from IndexedDB
       const getProjectsFromIndexedDB = async () => {
         try {
           if (!window.indexedDB) {
@@ -681,38 +680,25 @@ export const ApiProvider = ({ children }) => {
         const projectMap = new Map();
         
         // Add projects in order of priority (lowest to highest)
-        [localStorageProjects, indexedDBProjects, apiProjects].forEach(projects => {
-          if (Array.isArray(projects)) {
-            projects.forEach(project => {
-              if (project?.id) {
-                // Only add if not already in the map (higher priority sources come later)
-                projectMap.set(project.id, project);
-              }
-            });
-          }
-        });
+        };
+      });
+    }
         
-        const mergedProjects = Array.from(projectMap.values());
-        console.log(`[getProjects] Merged ${mergedProjects.length} projects from all sources`);
+        // Fallback to localStorage
+        const projectsStr = localStorage.getItem('projects') || '[]';
+        const projectsList = JSON.parse(projectsStr);
+        const projectIndex = projectsList.findIndex(p => p.id === projectId);
         
-        // If we have no projects from any source, return empty array
-        if (mergedProjects.length === 0) {
-          console.log('[getProjects] No projects found in any storage');
-          return [];
+        if (projectIndex === -1) {
+          throw new Error('Project not found');
         }
         
-        // Sort projects by last modified date (newest first)
-        const sortedProjects = mergedProjects.sort((a, b) => {
-          const dateA = new Date(a.updatedAt || a.createdAt || 0);
-          const dateB = new Date(b.updatedAt || b.createdAt || 0);
-          return dateB - dateA;
-        });
-        
-        return sortedProjects;
+        projectsList[projectIndex] = updatedProject;
+        localStorage.setItem('projects', JSON.stringify(projectsList));
+        return updatedProject;
       } catch (error) {
-        console.error('[API] Error getting projects:', error);
-        // Try to return whatever we can from localStorage as last resort
-        return getProjectsFromLocalStorage();
+        console.error(`[API] Error updating project ${projectId}:`, error);
+        throw error;
       }
     },
     
@@ -790,12 +776,12 @@ export const ApiProvider = ({ children }) => {
     },
     
     // State
-    loading: loading,
-    error: error,
+    loading,
+    error,
     
     // Methods
     clearError: () => setError(null),
-    handleApiError: handleApiError,
+    handleApiError,
     
     // AI Availability Check
     isAiAvailable: () => {

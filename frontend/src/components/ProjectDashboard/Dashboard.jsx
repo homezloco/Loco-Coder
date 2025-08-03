@@ -136,8 +136,44 @@ const Dashboard = ({
       console.log('Found last sync time:', storedSyncTime);
       setLastSyncTime(parseInt(storedSyncTime, 10));
     }
-    console.groupEnd();
-  }, []);
+    
+    // Initial load of projects
+    const controller = new AbortController();
+    loadProjects(controller.signal);
+    
+    return () => {
+      controller.abort();
+    };
+  }, [loadProjects]);
+  
+  // Listen for auth state changes
+  useEffect(() => {
+    const handleAuthStateChanged = (event) => {
+      if (event.detail?.isAuthenticated) {
+        console.log('Auth state changed - user authenticated, loading projects...');
+        const controller = new AbortController();
+        loadProjects(controller.signal);
+        
+        // Set up a retry mechanism in case the first load fails
+        const retryTimeout = setTimeout(() => {
+          loadProjects();
+        }, 2000);
+        
+        return () => {
+          controller.abort();
+          clearTimeout(retryTimeout);
+        };
+      }
+    };
+    
+    // Add event listener for auth state changes
+    window.addEventListener('auth-state-changed', handleAuthStateChanged);
+    
+    // Clean up event listener on unmount
+    return () => {
+      window.removeEventListener('auth-state-changed', handleAuthStateChanged);
+    };
+  }, [loadProjects]);
   
   // Load projects with robust multi-tiered fallback
   const loadProjects = useCallback(async (abortSignal) => {

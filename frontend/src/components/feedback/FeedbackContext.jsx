@@ -48,6 +48,19 @@ export const FeedbackProvider = ({ children, isDarkMode = false }) => {
       setIsProcessingQueue(false);
     }
   }, [toastQueue, activeToast, isProcessingQueue]);
+
+  // Show info toast
+  const showInfo = useCallback((message, options = {}) => {
+    const toast = {
+      id: Date.now().toString(),
+      message,
+      type: 'info',
+      ...options
+    };
+    
+    setToastQueue(prev => [...prev, toast]);
+    processQueue();
+  }, [processQueue]);
   
   // Effect to process queue
   React.useEffect(() => {
@@ -154,7 +167,7 @@ export const FeedbackProvider = ({ children, isDarkMode = false }) => {
     showInfoToast,
     clearToast,
     messageHistory,
-    
+    showInfo,
     // Navigation
     navigationPath,
     updateNavigationPath,

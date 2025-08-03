@@ -219,87 +219,89 @@ async function checkApiHealth(apiEndpoint = 'http://localhost:5000/api', skipCac
       }).finally(() => clearTimeout(timeoutId));
     };
     
-    // Try the main status endpoint first
-    try {
-      const response = await fetchFn(endpoints[0].url);
-      
-      if (response.ok) {
-        // Success, API is online and healthy
-        const data = await response.json();
-        const healthResult = { 
-          status: 'online', 
-          message: 'API is online and healthy',
-          details: data
-        };
-        
-        // Reset failures on success
-        apiHealthCache.consecutiveFailures = 0;
-        
-        // Update cache
-        apiHealthCache = {
-          status: healthResult,
-          timestamp: now,
-          offlineUntil: null,
-          consecutiveFailures: 0,
-          lastSuccessfulEndpoint: endpoints[0].name
-        };
-        
-        if (!quiet) console.log('API health check succeeded');
-        return healthResult;
-      }
-      
-      // Non-200 response
-      const healthResult = { 
-        status: 'degraded', 
-        message: `API responded with status: ${response.status}`,
-        statusCode: response.status
-      };
-      
-      // Update cache but don't reset failures
-      apiHealthCache = {
-        ...apiHealthCache,
-        status: healthResult,
-        timestamp: now,
-      };
-      
-      if (!quiet) console.warn(`API health check received non-200 response: ${response.status}`);
-      return healthResult;
-    } catch (error) {
-      if (!quiet) console.warn('Status endpoint check failed:', error.message);
-    }
-      
-    // Try each fallback endpoint systematically
-    for (let i = 2; i < endpoints.length; i++) {
+    // Check API health by probing status endpoint
+    const checkApiHealth = async (endpoint, { quiet = false } = {}) => {
+      const now = Date.now();
       try {
-        const endpoint = endpoints[i];
-        if (!quiet) console.log(`Trying fallback endpoint: ${endpoint.name}`);
+        // Get auth token for health check
+        const token = await getAuthToken(quiet);
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        const response = await fetchFn(endpoint.url, { 
-          signal: AbortSignal.timeout(1500) // Shorter timeout for faster fallback chain
-        });
+        // Ping the status endpoint
+        const response = await fetchFn(`${endpoint}/status`, { headers });
         
-        if (response.ok || response.status < 500) { // Any non-server error is a sign of life
+        // Success response
+        if (response.ok) {
+          // Reset health cache on success
           const healthResult = { 
-            status: 'degraded', 
-            message: `API responding at fallback endpoint: ${endpoint.name}`,
-            endpoint: endpoint.name
-          };
+            status: 'online', 
+            message: 'API is online',
+            statusCode: 200
+          }; 
           
           // Update cache
           apiHealthCache = {
+            ...apiHealthCache,
             status: healthResult,
             timestamp: now,
             offlineUntil: null,
-            lastSuccessfulEndpoint: endpoint.name
+            consecutiveFailures: 0,
+            lastSuccessfulEndpoint: endpoint
           };
           
-          if (!quiet) console.log(`API health check succeeded with fallback: ${endpoint.name}`);
+          if (!quiet) console.log('API health check succeeded');
           return healthResult;
         }
+        
+        // Handle 401 Unauthorized specifically
+        if (response.status === 401) {
+          const healthResult = { 
+            status: 'auth_required', 
+            message: 'Authentication required',
+            statusCode: 401
+          };
+          
+          // Clear token if unauthorized
+          if (window.api?.clearAuthToken) {
+            await window.api.clearAuthToken();
+          }
+          
+          if (!quiet) console.warn('API health check failed: Authentication required');
+          return healthResult;
+        }
+        
+        // Other non-200 response
+        const healthResult = { 
+          status: 'degraded', 
+          message: `API responded with status: ${response.status}`,
+          statusCode: response.status
+        };
+        
+        // Update cache but don't reset failures
+        apiHealthCache = {
+          ...apiHealthCache,
+          status: healthResult,
+          timestamp: now,
+        };
+        
+        if (!quiet) console.warn(`API health check received non-200 response: ${response.status}`);
+        return healthResult;
       } catch (error) {
-        if (!quiet) console.warn(`Fallback endpoint ${endpoints[i].name} check failed:`, error.message);
-        // Continue to next fallback
-      }
+        if (!quiet) console.warn('Status endpoint check failed:', error.message);
+        
+        // All health checks failed, API is likely offline
+        const offlineResult = { 
+          status: 'offline', 
+          message: `API is offline: ${error.message}`,
+          statusCode: 0
+        };
+        
+        // Record failure
+        apiHealthCache.lastFailure = now;
+        apiHealthCache.consecutiveFailures += 1;
+        
+        return offlineResult;
+      } 
     }
     
     // Record last failure time to implement exponential backoff
@@ -390,53 +392,169 @@ async function checkApiHealth(apiEndpoint = 'http://localhost:5000/api', skipCac
  * @param {boolean} quiet - Whether to suppress expected errors in console
  * @returns {Object} Result containing projects, source, and any errors
  */
-async function fetchProjects(apiEndpoint, quiet = false) {
+async function fetchProjects(apiEndpoint, options = {}) {
+  // Handle both apiEndpoint as string or options object
+  const normalizedOptions = typeof apiEndpoint === 'object' 
+    ? { ...apiEndpoint, ...options }
+    : { ...options, apiEndpoint };
+    
+  const {
+    quiet = false, 
+    forceRefresh = false,
+    maxRetries = 2,
+    retryDelay = 1000,
+    signal,
+    apiEndpoint: endpoint = 'http://localhost:8000'
+  } = normalizedOptions;
+  
   let projects = [];
   let errorMessage = null;
   let source = null;
+  let lastError = null;
   
-  // Check if we know the API is offline from our cache
-  const now = Date.now();
-  const isApiOffline = apiHealthCache.offlineUntil && now < apiHealthCache.offlineUntil;
-  
-  // Only attempt API call if we think it's online or if we haven't checked recently
-  if (!isApiOffline) {
+  // Define token storage keys
+  const TOKEN_KEYS = {
+    storageKey: 'auth_token',
+    sessionKey: 'session_token'
+  };
+
+  // Helper function to get authentication token from various sources
+  const getAuthToken = async (quiet = false) => {
     try {
-      // Check API health first to avoid unnecessary fetch attempts
-      const apiHealth = await checkApiHealth(apiEndpoint, quiet);
+      // First try to get token from the global api object if available
+      if (window.api && typeof window.api.getAuthToken === 'function') {
+        const token = await window.api.getAuthToken(quiet);
+        if (token) return token;
+      }
+      
+      // Fall back to direct storage if not available
+      const token = localStorage.getItem('auth_token') || 
+                   sessionStorage.getItem('auth_token') ||
+                   localStorage.getItem(TOKEN_KEYS?.storageKey) ||
+                   sessionStorage.getItem(TOKEN_KEYS?.storageKey);
+      
+      if (!token && !quiet) {
+        console.warn('No authentication token found in any storage');
+      }
+      return token || null;
+    } catch (error) {
+      console.error('Error retrieving auth token:', error);
+      return null;
+    }
+  };
+  
+  // Helper function to make API request with retries
+  const fetchWithRetry = async (url, options, retries = maxRetries) => {
+    // Extract the signal if provided in options
+    const { signal: externalSignal, ...restOptions } = options || {};
+    
+    for (let i = 0; i <= retries; i++) {
+      let timeoutId;
+      try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        // If we have an external signal, listen for abort
+        if (externalSignal) {
+          externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+        }
+        
+        const response = await fetch(url, {
+          ...restOptions,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // Handle 401 Unauthorized
+        if (response.status === 401) {
+          // Clear invalid token
+          if (window.api?.clearAuthToken) {
+            await window.api.clearAuthToken();
+          }
+          // Redirect to login if not already there
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+          throw new Error('Authentication required');
+        }
+        
+        if (response.ok) {
+          return await response.json();
+        }
+        
+        // For non-401 errors, throw to trigger retry
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        
+      } catch (error) {
+        lastError = error;
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        // Don't retry on abort or auth errors
+        if (error.name === 'AbortError' || error.message === 'Authentication required') {
+          throw error;
+        }
+        
+        // If we have retries left, wait before trying again
+        if (i < retries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay * (i + 1)));
+          continue;
+        }
+        
+        throw error;
+      }
+    }
+  };
+  
+  // Check if we should skip API check (e.g., offline mode)
+  const skipApiCheck = options.forceOffline || 
+                      (apiHealthCache.offlineUntil && Date.now() < apiHealthCache.offlineUntil);
+  
+  // Only attempt API call if we're not in offline mode
+  if (!skipApiCheck) {
+    try {
+      // Check API health first
+      const apiHealth = await checkApiHealth(endpoint, { quiet });
       
       if (apiHealth.status === 'online' || apiHealth.status === 'degraded') {
-        // API appears to be responsive, attempt to fetch projects
         persistenceStats.apiCalls++;
         
-        // Make the API call with a timeout to prevent long waits
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
         try {
-          const response = await fetch(`${apiEndpoint}/projects`, {
-            signal: controller.signal
-          });
+          const token = await getAuthToken();
+          const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          };
           
-          clearTimeout(timeoutId);
+          // Make the API request with retry logic
+          const data = await fetchWithRetry(
+            `${endpoint}/api/v1/projects`,
+            { 
+              method: 'GET',
+              headers,
+              credentials: 'include'
+            }
+          );
           
-          if (response.ok) {
-            const data = await response.json();
-            projects = data.projects || data;
-            source = 'api';
-            persistenceStats.apiSuccesses++;
-            
-            // Save to persistence layers for offline access
+          projects = Array.isArray(data?.projects) ? data.projects : (Array.isArray(data) ? data : []);
+          source = 'api';
+          persistenceStats.apiSuccesses++;
+          
+          // Cache the successful response
+          if (projects.length > 0) {
             await persistProjects(projects);
+            apiHealthCache.lastSuccess = Date.now();
             return { projects, source, error: null };
-          } else {
-            errorMessage = `API responded with status ${response.status}`;
-            if (!quiet) console.warn(`API fetch failed: ${errorMessage}`);
           }
+          
         } catch (error) {
-          clearTimeout(timeoutId);
-          errorMessage = `API fetch error: ${error.message}`;
+          errorMessage = `API request failed: ${error.message}`;
           if (!quiet) console.warn(errorMessage);
+          
+          // Mark API as offline for a short period
+          if (error.name !== 'AbortError' && !apiHealthCache.offlineUntil) {
+            apiHealthCache.offlineUntil = Date.now() + (5 * 60 * 1000); // 5 minutes
+          }
         }
       } else {
         // API is offline or in error state based on health check
@@ -449,6 +567,7 @@ async function fetchProjects(apiEndpoint, quiet = false) {
     }
   } else {
     // API is known to be offline from cache
+    const now = Date.now();
     const retryTimeSeconds = Math.round((apiHealthCache.offlineUntil - now) / 1000);
     errorMessage = `API is offline (cached status). Will retry in ${retryTimeSeconds}s`;
     if (!quiet) console.log(errorMessage);
@@ -504,31 +623,35 @@ async function fetchProjects(apiEndpoint, quiet = false) {
       if (parsedProjects && parsedProjects.length > 0) {
         persistenceStats.ssSuccesses++;
         return {
+          projects: parsedProjects,
+          source: 'sessionStorage',
+          error: errorMessage
+        };
+      }
+    }
+  } catch (error) {
+    if (!quiet) console.warn('Failed to retrieve from sessionStorage:', error.message);
   }
-}
-} catch (error) {
-if (!quiet) console.warn('Failed to retrieve from sessionStorage:', error.message);
-}
 
-// Final fallback - generate placeholder projects
-persistenceMonitor.recordFallback('toPlaceholder');
-persistenceMonitor.recordDataSource('placeholder');
+  // Final fallback - generate placeholder projects
+  persistenceMonitor.recordFallback('toPlaceholder');
+  persistenceMonitor.recordDataSource('placeholder');
   
-console.log('All persistence methods failed, generating placeholder projects');
-const placeholderProjects = generatePlaceholderProjects(3);
+  console.log('All persistence methods failed, generating placeholder projects');
+  const placeholderProjects = generatePlaceholderProjects(3);
   
-// Try to persist the placeholder projects for future use
-try {
-  await persistProjects(placeholderProjects);
-} catch (persistError) {
-  console.warn('Failed to persist placeholder projects:', persistError);
-}
+  // Try to persist the placeholder projects for future use
+  try {
+    await persistProjects(placeholderProjects);
+  } catch (persistError) {
+    console.warn('Failed to persist placeholder projects:', persistError);
+  }
   
-return { 
-  projects: placeholderProjects, 
-  source: 'placeholder', 
-  error: errorMessage || 'All persistence methods failed. Using placeholder projects.' 
-}; 
+  return { 
+    projects: placeholderProjects, 
+    source: 'placeholder', 
+    error: errorMessage || 'All persistence methods failed. Using placeholder projects.' 
+  };
 }
 
 /**

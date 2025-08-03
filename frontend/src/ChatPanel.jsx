@@ -20,7 +20,7 @@ const safeStringify = (obj) => {
   }, 2);
 };
 import api from './api';
-import aiService from './api/modules/ai';
+import { createAiService } from './api/modules/ai';
 import ChatSettings from './components/ChatSettings';
 import CodeConfirmation from './components/CodeConfirmation';
 import { checkChatApiHealth, saveChatHistory, loadChatHistory } from './utils/chatUtils';

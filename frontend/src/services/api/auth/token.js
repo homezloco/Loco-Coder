@@ -246,17 +246,7 @@ export const validateToken = async () => {
   }
 };
 
-// Export all public methods
-export {
-  setAuthToken,
-  clearAuthToken,
-  getAuthToken,
-  validateToken,
-  parseToken,
-  isTokenExpired
-};
-
-// For backward compatibility
+// Export all public methods as default for backward compatibility
 export default {
   setAuthToken,
   clearAuthToken,

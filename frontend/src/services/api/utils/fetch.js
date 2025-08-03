@@ -1,5 +1,5 @@
 import { API_BASE_URL, FALLBACK_URLS } from '../config';
-import { getAuthToken } from '../auth/token';
+import tokenUtils from '../auth/token';
 
 // Track active requests to prevent duplicate calls
 const activeRequests = new Map();
@@ -17,7 +17,7 @@ const activeRequests = new Map();
  */
 export const fetchWithTimeout = async (resource, options = {}) => {
   const {
-    timeout = 10000,
+    timeout = 30000, // Increased default timeout to 30s
     maxRetries = 2,
     retryDelay = 1000,
     skipAuth = false,
@@ -30,94 +30,140 @@ export const fetchWithTimeout = async (resource, options = {}) => {
   
   // Check for duplicate requests
   if (activeRequests.has(requestKey)) {
+    console.log(`[Fetch] Returning existing request for ${requestKey}`);
     return activeRequests.get(requestKey);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  // Add auth header if needed
-  if (!skipAuth) {
-    const token = getAuthToken();
-    if (token) {
-      fetchOptions.headers = {
-        ...fetchOptions.headers,
-        'Authorization': `Bearer ${token}`,
-      };
-    }
-  }
-
-  // Ensure we have proper headers
-  fetchOptions.headers = {
-    'Content-Type': 'application/json',
-    ...fetchOptions.headers,
-  };
-
-  // Ensure credentials are included for cookies
-  fetchOptions.credentials = 'include';
-  
-  // Add signal for timeout/abort
-  fetchOptions.signal = controller.signal;
-
-  let attempt = 0;
-  let lastError = null;
-  
-  // Try the primary URL first, then fallbacks
-  const urlsToTry = [API_BASE_URL, ...FALLBACK_URLS];
-  
-  for (const baseUrl of urlsToTry) {
-    if (attempt > maxRetries) break;
+  // Create a promise that will be stored in activeRequests
+  const fetchPromise = (async () => {
+    const controller = new AbortController();
+    let timeoutId;
     
-    const url = resource.startsWith('http') ? resource : `${baseUrl}${resource}`;
-    
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activeRequests.delete(requestKey);
+    };
+
     try {
-      const response = await fetch(url, fetchOptions);
+      // Set up timeout
+      timeoutId = setTimeout(() => {
+        console.warn(`[Fetch] Request to ${resource} timed out after ${timeout}ms`);
+        controller.abort(new Error(`Request timed out after ${timeout}ms`));
+      }, timeout);
       
-      // If we get a 401, clear the auth token and throw
-      if (response.status === 401) {
-        await import('../auth').then(({ logout }) => logout());
-        throw new Error('Session expired. Please log in again.');
+      // Add auth header if not skipped
+      if (!skipAuth) {
+        const token = await tokenUtils.getAuthToken();
+        if (token) {
+          fetchOptions.headers = {
+            ...fetchOptions.headers,
+            'Authorization': `Bearer ${token}`,
+          };
+        } else if (!skipAuth) {
+          console.warn('[Fetch] No auth token available for request to', resource);
+        }
       }
+
+      // Ensure we have proper headers
+      fetchOptions.headers = {
+        'Content-Type': 'application/json',
+        ...fetchOptions.headers,
+      };
+
+      // Ensure credentials are included for cookies
+      fetchOptions.credentials = 'include';
       
-      // If successful, clear the active request and return the response
-      if (response.ok || attempt >= maxRetries) {
-        clearTimeout(timeoutId);
-        activeRequests.delete(requestKey);
-        return response;
+      // Add signal for timeout/abort
+      fetchOptions.signal = controller.signal;
+
+      let attempt = 0;
+      let lastError = null;
+      
+      // Try the primary URL first, then fallbacks
+      const urlsToTry = [API_BASE_URL, ...FALLBACK_URLS];
+  
+      for (const baseUrl of urlsToTry) {
+        try {
+          const url = resource.startsWith('http') ? resource : `${baseUrl}${resource}`;
+          console.log(`[Fetch] Attempting request to ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
+          
+          // Make the request
+          const response = await fetch(url, {
+            ...fetchOptions,
+            signal: controller.signal,
+          });
+
+          // Clear the timeout
+          clearTimeout(timeoutId);
+          timeoutId = null;
+
+          // Handle non-2xx responses
+          if (!response.ok) {
+            const error = new Error(`HTTP error! status: ${response.status}`);
+            error.status = response.status;
+            error.response = response;
+            throw error;
+          }
+
+          // Clean up and return the response
+          cleanup();
+          return response;
+        } catch (error) {
+          lastError = error;
+          
+          // Don't retry if the request was aborted
+          if (error.name === 'AbortError') {
+            console.warn('[Fetch] Request was aborted:', error.message);
+            cleanup();
+            throw error;
+          }
+          
+          console.warn(`[Fetch] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+          
+          // If we've reached max retries, throw the last error
+          if (attempt >= maxRetries - 1) {
+            cleanup();
+            throw error;
+          }
+          
+          // Call the onRetry callback if provided
+          if (onRetry) {
+            onRetry(attempt + 1, error);
+          }
+          
+          // Wait before retrying
+          const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
+          console.log(`[Fetch] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          attempt++;
+        }
       }
-      
-      // If not successful, throw to trigger retry
-      throw new Error(`HTTP error! status: ${response.status}`);
-      
+  
+      // If we get here, all attempts failed
+      cleanup();
+      const error = lastError || new Error('All fetch attempts failed');
+      error.name = 'NetworkError';
+      throw error;
     } catch (error) {
-      lastError = error;
-      attempt++;
-      
-      // Don't retry on aborted requests or 4xx errors (except 429)
-      if (error.name === 'AbortError' || 
-          (error.message.includes('40') && !error.message.includes('429'))) {
-        break;
+      // Clean up if not already done
+      if (activeRequests.get(requestKey) === fetchPromise) {
+        activeRequests.delete(requestKey);
       }
-      
-      // Call the onRetry callback if provided
-      if (onRetry) {
-        onRetry(attempt, error);
-      }
-      
-      // Wait before retrying (exponential backoff)
-      if (attempt <= maxRetries) {
-        await new Promise(resolve => 
-          setTimeout(resolve, retryDelay * Math.pow(2, attempt - 1))
-        );
-      }
+      throw error;
+    }
+  });
+
+  // Store the promise to handle duplicate requests
+  activeRequests.set(requestKey, fetchPromise);
+  
+  try {
+    return await fetchPromise;
+  } finally {
+    // Clean up if not already done
+    if (activeRequests.get(requestKey) === fetchPromise) {
+      activeRequests.delete(requestKey);
     }
   }
-  
-  // Clean up and throw the last error
-  clearTimeout(timeoutId);
-  activeRequests.delete(requestKey);
-  
-  throw lastError || new Error('Request failed with no error information');
 };
 
 /**

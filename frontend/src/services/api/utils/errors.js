@@ -116,6 +116,46 @@ class TimeoutError extends ApiError {
 }
 
 /**
+ * Handles API errors consistently
+ * @param {Error|Response} error - The error or response object
+ * @param {Object} [options] - Options for error handling
+ * @param {boolean} [options.rethrow=false] - Whether to rethrow the error
+ * @param {Function} [options.onError] - Callback for custom error handling
+ * @returns {Promise<ApiError>} The processed error
+ */
+const handleApiError = async (error, options = {}) => {
+  const { rethrow = false, onError } = options;
+  
+  // If it's already an ApiError, just return it
+  if (error instanceof ApiError) {
+    if (rethrow) throw error;
+    return error;
+  }
+  
+  // If it's a Response object, convert it to an error
+  if (error instanceof Response) {
+    error = await createErrorFromResponse(error);
+  }
+  
+  // Log the error in development
+  if (process.env.NODE_ENV === 'development') {
+    console.error('API Error:', error);
+  }
+  
+  // Call custom error handler if provided
+  if (typeof onError === 'function') {
+    onError(error);
+  }
+  
+  // Re-throw if requested
+  if (rethrow) {
+    throw error;
+  }
+  
+  return error;
+};
+
+/**
  * Creates an appropriate error object from an HTTP response
  * @param {Response} response - The fetch Response object
  * @returns {Promise<ApiError>} An appropriate error instance
@@ -160,33 +200,6 @@ const createErrorFromResponse = async (response) => {
   }
 };
 
-/**
- * Handles API errors consistently
- * @param {Error} error - The error to handle
- * @param {Object} [options] - Error handling options
- * @param {boolean} [options.rethrow=false] - Whether to rethrow the error
- * @param {Function} [options.onError] - Callback for custom error handling
- * @returns {void}
- */
-const handleApiError = (error, options = {}) => {
-  const { rethrow = false, onError } = options;
-  
-  // Log the error in development
-  if (process.env.NODE_ENV === 'development') {
-    console.error('API Error:', error);
-  }
-  
-  // Call custom error handler if provided
-  if (typeof onError === 'function') {
-    onError(error);
-  }
-  
-  // Re-throw if requested
-  if (rethrow) {
-    throw error;
-  }
-};
-
 export {
   ApiError,
   BadRequestError,
@@ -201,5 +214,5 @@ export {
   NetworkError,
   TimeoutError,
   createErrorFromResponse,
-  handleApiError,
+  handleApiError
 };

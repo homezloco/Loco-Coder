@@ -1,4 +1,4 @@
-import aiService from './modules/ai-new.js';
+import { createAiService } from './modules/ai.js';
 
 // Test configuration
 const MESSAGE_TIMEOUT = 300000; // 5 minutes max per message

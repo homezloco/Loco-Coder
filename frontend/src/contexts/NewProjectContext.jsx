@@ -556,6 +556,73 @@ export const ProjectProvider = ({ children }) => {
     }
   }, [loading, showErrorToast, api.projects]);
 
+  // Load projects from the API with retry logic
+  const loadProjectsRetry = useCallback(async (retryCount = 0) => {
+    if (!isAuthenticated || !token) {
+      console.log('[ProjectContext] User not authenticated, skipping project load');
+      setProjects([]);
+      return;
+    }
+
+    // Don't show loading state for retries to prevent UI flickering
+    if (retryCount === 0) {
+      setLoading(true);
+    }
+    
+    setError(null);
+
+    try {
+      console.log(`[ProjectContext] Loading projects from API (attempt ${retryCount + 1})...`);
+      
+      // Add a small delay before retrying to avoid overwhelming the server
+      if (retryCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.min(retryCount, 3)));
+      }
+      
+      const projectsData = await api.projects.getProjects({
+        timeout: 10000, // 10 second timeout
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : null // Fallback for older browsers
+      });
+      
+      if (!Array.isArray(projectsData)) {
+        throw new Error('Invalid projects data received from server');
+      }
+      
+      setProjects(projectsData);
+      console.log(`[ProjectContext] Successfully loaded ${projectsData.length} projects`);
+      
+      // Clear any previous errors on success
+      if (error) {
+        setError(null);
+      }
+    } catch (err) {
+      console.error(`[ProjectContext] Error loading projects (attempt ${retryCount + 1}):`, err);
+      
+      // Auto-retry for network errors or server timeouts
+      if (retryCount < 2 && (err.name === 'TypeError' || err.name === 'AbortError' || 
+          (err.response && err.response.status >= 500))) {
+        console.log(`[ProjectContext] Retrying project load (attempt ${retryCount + 2})...`);
+        return loadProjectsRetry(retryCount + 1);
+      }
+      
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to load projects';
+      setError(errorMessage);
+      
+      // Only show error toast for the final attempt
+      if (retryCount >= 2) {
+        showErrorToast(errorMessage);
+      }
+      
+      // If unauthorized, redirect to login
+      if (err.response?.status === 401) {
+        console.log('[ProjectContext] Unauthorized, redirecting to login...');
+        navigate('/login', { replace: true });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [api.projects, isAuthenticated, token, error, showErrorToast, navigate]);
+
   // Load a single project by ID
   const loadProject = useCallback(async (projectId) => {
     if (!projectId) {
@@ -599,51 +666,113 @@ export const ProjectProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [projects, showErrorToast, api.projects]);
+  }, [isAuthenticated, navigate, projects, showErrorToast, showSuccessToast, api.projects]);
 
-  // Create a new project
-  const createProject = useCallback(async (projectData) => {
-    if (!isAuthenticated) {
-      showErrorToast('You must be logged in to create a project');
-      navigate('/login');
-      return null;
+  // Create a new project with robust error handling and validation
+  const createProject = useCallback(async (projectData, options = {}) => {
+    // Validate input
+    if (!isAuthenticated || !token) {
+      const errorMsg = 'You must be logged in to create a project';
+      console.error('[ProjectContext] ' + errorMsg);
+      showErrorToast(errorMsg);
+      navigate('/login', { state: { from: window.location.pathname } });
+      throw new Error(errorMsg);
     }
+
+    if (!projectData?.name?.trim()) {
+      const errorMsg = 'Project name is required';
+      console.error('[ProjectContext] ' + errorMsg);
+      showErrorToast(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const { retryCount = 0, maxRetries = 2 } = options;
+    const projectName = projectData.name.trim();
+    
+    // Don't show loading state for retries to prevent UI flickering
+    if (retryCount === 0) {
+      setLoading(true);
+    }
+    setError(null);
 
     try {
-      setLoading(true);
-      setError(null);
+      console.log(`[ProjectContext] Creating new project (attempt ${retryCount + 1}/${maxRetries + 1})...`, { name: projectName });
       
-      console.log('[ProjectContext] Creating new project...', projectData);
-      const newProject = await api.projects.createProject(projectData);
-      
-      if (newProject) {
-        console.log('[ProjectContext] Successfully created project', newProject);
-        
-        // Update local state
-        setProjects(prevProjects => [...prevProjects, newProject]);
-        setCurrentProject(newProject);
-        
-        // Update cache using efficient storage
-        try {
-          saveProjectsToStorage([...projects, newProject]);
-        } catch (storageError) {
-          console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
-        }
-        
-        showSuccessToast('Project created successfully');
-        return newProject;
+      // Add a small delay before retrying to avoid overwhelming the server
+      if (retryCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.min(retryCount, 3)));
       }
       
-      throw new Error('Failed to create project');
+      // Create the project via API
+      const newProject = await api.projects.createProject({
+        ...projectData,
+        name: projectName,
+        // Ensure we have required fields with defaults
+        description: projectData.description?.trim() || '',
+        settings: projectData.settings || {},
+        metadata: {
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          ...(projectData.metadata || {})
+        }
+      });
+      
+      if (!newProject?.id) {
+        throw new Error('Invalid project data received from server');
+      }
+      
+      console.log('[ProjectContext] Successfully created project', newProject.id, newProject.name);
+      
+      // Update local state
+      setProjects(prevProjects => [...prevProjects, newProject]);
+      setCurrentProject(newProject);
+      
+      // Update cache
+      try {
+        const cachedProjects = JSON.parse(localStorage.getItem('projects') || '[]');
+        localStorage.setItem('projects', JSON.stringify([...cachedProjects, newProject]));
+        localStorage.setItem('projects_last_fetch', Date.now().toString());
+      } catch (storageError) {
+        console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+      }
+      
+      showSuccessToast(`Project "${projectName}" created successfully`);
+      return newProject;
+      
     } catch (error) {
-      console.error('[ProjectContext] Failed to create project', error);
-      setError(error);
-      showErrorToast(`Failed to create project: ${error.message}`);
+      console.error(`[ProjectContext] Failed to create project (attempt ${retryCount + 1})`, error);
+      
+      // Auto-retry for network errors or server timeouts
+      if (retryCount < maxRetries && (error.name === 'TypeError' || error.name === 'AbortError' || 
+          (error.response && error.response.status >= 500))) {
+        console.log(`[ProjectContext] Retrying project creation (attempt ${retryCount + 2})...`);
+        return createProject(projectData, { ...options, retryCount: retryCount + 1 });
+      }
+      
+      // Handle specific error cases
+      let errorMessage = 'Failed to create project';
+      if (error.response) {
+        // Server responded with an error status code
+        errorMessage = error.response.data?.message || 
+          `Server error: ${error.response.status} ${error.response.statusText}`;
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'No response from server. Please check your connection.';
+      } else if (error.message) {
+        // Something happened in setting up the request
+        errorMessage = error.message;
+      }
+      
+      setError({ ...error, message: errorMessage });
+      showErrorToast(errorMessage);
       throw error;
+      
     } finally {
-      setLoading(false);
+      if (retryCount === 0) {
+        setLoading(false);
+      }
     }
-  }, [isAuthenticated, navigate, projects, showErrorToast, showSuccessToast, api.projects]);
+  }, [isAuthenticated, token, navigate, showErrorToast, showSuccessToast, api.projects]);
 
   // Update an existing project
   const updateProject = useCallback(async (projectId, updates) => {

@@ -86,7 +86,130 @@ const getAxiosInstance = (baseURL = 'http://172.28.112.1:11434', timeout = DEFAU
 };
 
 // Core AI Service Implementation
-const aiServiceImplementation = {
+class AiService {
+  constructor() {
+    console.log('[AI Service] Creating new AiService instance');
+    
+    // Initialize service state first
+    this.isInitialized = false;
+    this.axios = null;
+    this.config = { ...DEFAULT_CONFIG };
+    
+    // Debug: Check if chat method exists before binding
+    console.log('[AI Service] Before binding - chat method exists:', typeof this.chat === 'function');
+    
+    // Manually bind all methods to ensure they're properly bound
+    this.initialize = this.initialize.bind(this);
+    this.chat = this.chat.bind(this);
+    this.execute = this.execute.bind(this);
+    this.getAvailableModels = this.getAvailableModels.bind(this);
+    this.getModelInfo = this.getModelInfo.bind(this);
+    this.checkHealth = this.checkHealth.bind(this);
+    this.bindAllMethods = this.bindAllMethods.bind(this);
+    
+    // Debug: Check if chat method exists after binding
+    console.log('[AI Service] After binding - chat method exists:', typeof this.chat === 'function');
+    console.log('[AI Service] Instance methods after binding:', 
+      Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+        .filter(prop => typeof this[prop] === 'function')
+    );
+    
+    console.log('[AI Service] Constructor completed');
+  }
+  
+  /**
+   * Bind all class methods to the instance
+   */
+  bindAllMethods() {
+    console.log('[AI Service] Starting method binding...');
+    
+    // Get all methods from the prototype chain
+    const prototypeMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+      .filter(prop => typeof this[prop] === 'function' && prop !== 'constructor');
+    
+    // Add any instance methods that might not be on the prototype
+    const instanceMethods = Object.getOwnPropertyNames(this)
+      .filter(prop => typeof this[prop] === 'function' && 
+                     prop !== 'constructor' && 
+                     !prototypeMethods.includes(prop));
+    
+    // Combine all methods to bind
+    const methodsToBind = [...new Set([...prototypeMethods, ...instanceMethods])];
+    
+    console.log('[AI Service] Methods to bind:', methodsToBind);
+    
+    // Bind each method to the instance
+    let boundMethods = [];
+    let failedMethods = [];
+    
+    methodsToBind.forEach(methodName => {
+      try {
+        if (typeof this[methodName] === 'function') {
+          const originalMethod = this[methodName];
+          this[methodName] = originalMethod.bind(this);
+          
+          // Verify the method is properly bound
+          if (this[methodName] === originalMethod) {
+            console.warn(`[AI Service] Method ${methodName} may not be properly bound`);
+          }
+          
+          boundMethods.push(methodName);
+        } else {
+          console.warn(`[AI Service] Method ${methodName} is not a function`);
+          failedMethods.push(methodName);
+        }
+      } catch (error) {
+        console.error(`[AI Service] Failed to bind method ${methodName}:`, error);
+        failedMethods.push(methodName);
+      }
+    });
+    
+    console.log(`[AI Service] Successfully bound ${boundMethods.length} methods:`, boundMethods);
+    if (failedMethods.length > 0) {
+      console.warn(`[AI Service] Failed to bind ${failedMethods.length} methods:`, failedMethods);
+    }
+    
+    // Verify chat method is bound and callable
+    if (typeof this.chat !== 'function') {
+      const error = new Error('Chat method is not a function after binding');
+      console.error('[AI Service] CRITICAL:', error.message);
+      console.error('[AI Service] Available methods on instance:', Object.getOwnPropertyNames(this));
+      console.error('[AI Service] Available methods on prototype:', 
+        Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+          .filter(prop => typeof this[prop] === 'function')
+      );
+      
+      // Add more debug info to the error
+      error.debugInfo = {
+        instanceMethods: Object.getOwnPropertyNames(this),
+        prototypeMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+          .filter(prop => typeof this[prop] === 'function'),
+        boundMethods,
+        failedMethods
+      };
+      
+      throw error;
+    }
+    
+    console.log('[AI Service] All methods bound successfully');
+  }
+  
+  /**
+   * Initialize the service
+   */
+  async initialize() {
+    if (this.isInitialized) return this;
+    
+    try {
+      this.axios = getAxiosInstance();
+      await this.checkHealth();
+      this.isInitialized = true;
+      return this;
+    } catch (error) {
+      console.error('[AI Service] Failed to initialize:', error);
+      throw error;
+    }
+  }
   /**
    * Chat with AI
    * @param {string} prompt - User message
@@ -100,6 +223,11 @@ const aiServiceImplementation = {
   async chat(prompt, options = {}) {
     // Log environment and storage availability
     console.log('[AI Service] Starting chat with prompt:', prompt.substring(0, 50) + (prompt.length > 50 ? '...' : ''));
+    console.log('[AI Service] chat method context:', {
+      this: this,
+      hasChatMethod: typeof this.chat === 'function',
+      methods: Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+    });
     console.log('[AI Service] Environment check:', {
       isBrowser: typeof window !== 'undefined',
       localStorage: typeof localStorage !== 'undefined' ? 'available' : 'unavailable',
@@ -203,7 +331,7 @@ const aiServiceImplementation = {
       console.error('[AI Service] Chat error after all retries:', error);
       throw error;
     }
-  },
+  }
   
   // Execute code
   async execute(code, language = 'python') {
@@ -212,9 +340,9 @@ const aiServiceImplementation = {
     return {
       output: 'Code execution not implemented',
       error: null,
-      language,
+      language
     };
-  },
+  }
   
   // Get available models
   async getAvailableModels() {
@@ -232,7 +360,7 @@ const aiServiceImplementation = {
         { name: 'codellama:7b-instruct-q4_0' },
       ];
     }
-  },
+  }
   
   // Get model info
   async getModelInfo(modelId) {
@@ -241,9 +369,9 @@ const aiServiceImplementation = {
       id: modelId,
       name: modelId,
       max_tokens: 2000,
-      supports_chat: true,
+      supports_chat: true
     };
-  },
+  }
   
   // Check if the AI service is healthy
   async checkHealth() {
@@ -280,37 +408,167 @@ const aiServiceImplementation = {
 
 // Bind all methods to maintain proper 'this' context
 const bindMethods = (obj) => {
-  const bound = {};
-  Object.getOwnPropertyNames(Object.getPrototypeOf(obj)).forEach(key => {
-    if (typeof obj[key] === 'function' && key !== 'constructor') {
-      bound[key] = obj[key].bind(obj);
+  console.log('[AI Service] Binding methods for:', obj.constructor?.name || 'anonymous');
+  
+  // Get all property names from the object's prototype chain
+  let currentObj = obj;
+  const methodNames = new Set();
+  
+  // Walk up the prototype chain to collect all methods
+  while (currentObj && currentObj !== Object.prototype) {
+    Object.getOwnPropertyNames(currentObj)
+      .filter(name => 
+        name !== 'constructor' && 
+        typeof currentObj[name] === 'function' &&
+        !methodNames.has(name)
+      )
+      .forEach(name => {
+        methodNames.add(name);
+        // Store the original method for debugging
+        const originalMethod = currentObj[name];
+        // Bind the method to the instance
+        obj[name] = originalMethod.bind(obj);
+        console.log(`[AI Service] Bound method: ${name}`);
+      });
+      
+    // Move up the prototype chain
+    currentObj = Object.getPrototypeOf(currentObj);
+  }
+  
+  console.log(`[AI Service] Bound ${methodNames.size} methods`);
+  return obj;
+};
+
+// Helper function to get all methods from an object's prototype chain
+const getAllMethods = (obj) => {
+  let methods = [];
+  let current = obj;
+  
+  while (current && current !== Object.prototype) {
+    const props = Object.getOwnPropertyNames(Object.getPrototypeOf(current) || {})
+      .filter(prop => typeof current[prop] === 'function' && prop !== 'constructor');
+    methods = [...methods, ...props];
+    current = Object.getPrototypeOf(current);
+  }
+  
+  return [...new Set(methods)]; // Remove duplicates
+};
+
+/**
+ * Create and initialize an AI service instance
+ * @returns {Promise<AiService>} Initialized AI service instance
+ */
+const createAiService = async () => {
+  console.log('[AI Service] Starting AI service creation...');
+  
+  try {
+    // Create a new instance of the AI service
+    console.log('[AI Service] Creating new AiService instance...');
+    const service = new AiService();
+    
+    // Verify the service instance was created
+    if (!service) {
+      throw new Error('Failed to create AiService instance');
     }
-  });
-  return bound;
+    
+    // Debug: Log all properties of the service instance
+    console.log('[AI Service] Service instance properties:', {
+      ownProperties: Object.getOwnPropertyNames(service),
+      prototypeChain: getPrototypeChain(service).map(p => ({
+        name: p.constructor?.name || 'Anonymous',
+        properties: Object.getOwnPropertyNames(p)
+      })),
+      hasChat: 'chat' in service,
+      chatType: typeof service.chat,
+      chatIsFunction: typeof service.chat === 'function'
+    });
+    
+    // Verify the chat method exists before initialization
+    if (typeof service.chat !== 'function') {
+      const availableMethods = Object.getOwnPropertyNames(service)
+        .filter(prop => typeof service[prop] === 'function');
+      
+      const error = new Error(
+        `Chat method not found on AiService instance. ` +
+        `Available methods: ${availableMethods.join(', ')}`
+      );
+      
+      // Add debug information to the error
+      error.debugInfo = {
+        ownProperties: Object.getOwnPropertyNames(service),
+        prototypeChain: getPrototypeChain(service),
+        hasChat: 'chat' in service,
+        chatType: typeof service.chat
+      };
+      
+      throw error;
+    }
+    
+    console.log('[AI Service] AiService instance created successfully');
+    
+    // Initialize the service
+    console.log('[AI Service] Initializing AI service...');
+    const initializedService = await service.initialize();
+    
+    if (!initializedService) {
+      throw new Error('Service initialization returned undefined');
+    }
+    
+    // Double-check the chat method after initialization
+    if (typeof initializedService.chat !== 'function') {
+      const availableMethods = Object.getOwnPropertyNames(initializedService)
+        .filter(prop => typeof initializedService[prop] === 'function');
+      
+      throw new Error(
+        `Chat method lost after initialization. ` +
+        `Available methods: ${availableMethods.join(', ')}`
+      );
+    }
+    
+    console.log('[AI Service] AI service initialized successfully');
+    
+    // Log the bound methods for debugging
+    const boundMethods = Object.getOwnPropertyNames(initializedService)
+      .filter(prop => typeof initializedService[prop] === 'function')
+      .filter(prop => !prop.startsWith('_') && prop !== 'constructor');
+      
+    console.log('[AI Service] Bound methods:', boundMethods);
+    
+    return initializedService;
+    
+  } catch (error) {
+    console.error('[AI Service] Critical error during service creation:', {
+      message: error.message,
+      stack: error.stack,
+      errorType: error.constructor.name,
+      ...(error.availableMethods && { availableMethods: error.availableMethods })
+    });
+    
+    // Create a more descriptive error
+    const enhancedError = new Error(`Failed to create AI service: ${error.message}`);
+    enhancedError.originalError = error;
+    enhancedError.name = 'AiServiceInitializationError';
+    
+    throw enhancedError;
+  }
 };
 
-// Create the AI service instance
-const createAiService = () => {
-  // Create a new instance with bound methods
-  const service = Object.create(aiServiceImplementation);
+// Helper function to get prototype chain for debugging
+function getPrototypeChain(obj) {
+  const chain = [];
+  let current = obj;
   
-  // Bind all methods
-  const boundService = bindMethods(service);
+  while (current) {
+    chain.push({
+      constructor: current.constructor?.name || 'No constructor',
+      methods: Object.getOwnPropertyNames(Object.getPrototypeOf(current) || {})
+        .filter(prop => typeof current[prop] === 'function' && prop !== 'constructor')
+    });
+    current = Object.getPrototypeOf(current);
+  }
   
-  // Add utility methods
-  boundService.isInitialized = true;
-  boundService.isHealthy = () => isServiceHealthy;
-  
-  return boundService;
-};
+  return chain;
+}
 
-// Create and export the singleton instance
-const aiService = createAiService();
-
-// Log the service for debugging
-console.log('[AI Service] AI service created with methods:', 
-  Object.keys(aiService).filter(key => typeof aiService[key] === 'function')
-);
-
-// Export the service as default
-export default aiService;
+// Export the createAiService function as a named export
+export { createAiService };

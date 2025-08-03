@@ -5,7 +5,7 @@
 
 import { ENDPOINTS } from '../config';
 import { fetchWithTimeout } from '../utils/fetch';
-import * as tokenModule from './token';
+import tokenModule from './token';
 
 // Singleton instance
 let authServiceInstance = null;

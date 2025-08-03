@@ -1,0 +1,98 @@
+/**
+ * Main API Client
+ * 
+ * This is a lightweight wrapper that delegates to individual service modules.
+ * All business logic and implementation details are now in the service modules.
+ */
+
+// Import service modules
+import authService from './api/services/auth/AuthService';
+import projectService from './api/services/projects/ProjectService';
+import fileService from './api/services/files/FileService';
+import templateService from './api/services/templates/TemplateService';
+import healthService from './api/services/health/HealthService';
+import ollamaService from './api/services/ai/OllamaService';
+
+// Initialize AI service
+let aiService = null;
+try {
+  const { default: createAiService } = await import('../api/modules/ai.js');
+  aiService = createAiService();
+} catch (error) {
+  console.warn('Failed to initialize AI service:', error);
+}
+
+// Debug configuration
+console.group('[API] Initializing API Service');
+console.log('Service modules loaded:', { 
+  authService: !!authService, 
+  projectService: !!projectService, 
+  fileService: !!fileService,
+  templateService: !!templateService,
+  healthService: !!healthService,
+  ollamaService: !!ollamaService,
+  aiService: !!aiService
+});
+console.groupEnd();
+
+/**
+ * Main API client that delegates to service modules
+ */
+const api = {
+  // Authentication methods
+  login: authService.login.bind(authService),
+  logout: authService.logout.bind(authService),
+  setAuthToken: authService.setAuthToken.bind(authService),
+  getAuthToken: authService.getAuthToken.bind(authService),
+  clearAuthToken: authService.clearAuthToken.bind(authService),
+  validateAndSyncToken: authService.validateAndSyncToken.bind(authService),
+  
+  // Project management
+  getProjects: projectService.getProjects.bind(projectService),
+  getProject: projectService.getProject.bind(projectService),
+  createProject: projectService.createProject.bind(projectService),
+  updateProject: projectService.updateProject.bind(projectService),
+  deleteProject: projectService.deleteProject.bind(projectService),
+  
+  // File operations
+  getProjectFiles: fileService.getProjectFiles.bind(fileService),
+  readFile: fileService.readFile.bind(fileService),
+  writeFile: fileService.writeFile.bind(fileService),
+  
+  // Templates
+  getTemplates: templateService.getTemplates.bind(templateService),
+  
+  // Health check
+  healthCheck: healthService.healthCheck.bind(healthService),
+  
+  // AI/ML Services
+  testOllamaConnection: ollamaService.testConnection.bind(ollamaService),
+  
+  // Execute code
+  executeCode: async function(code, language = 'python') {
+    return fileService.executeCode(code, language);
+  },
+  
+  // Wait for AI service to be ready
+  waitForAiService: async function() {
+    if (!aiService) {
+      throw new Error('AI service not initialized');
+    }
+    return aiService.waitForReady();
+  },
+  
+  // Get the current AI service instance
+  getAiService: function() {
+    if (!aiService) {
+      throw new Error('AI service not initialized');
+    }
+    return aiService;
+  }
+};
+
+// Make the API client available globally for backward compatibility
+if (typeof window !== 'undefined') {
+  window.api = api;
+}
+
+export default api;

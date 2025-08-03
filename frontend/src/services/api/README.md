@@ -18,9 +18,151 @@ services/api/
 ├── utils/                  # Shared utilities
 │   ├── fetch.js            # Enhanced fetch with retry/timeout
 │   ├── cache.js            # Caching utilities
-│   └── errors.js           # Error handling utilities
+│   ├── errors.js           # Error handling utilities
+│   ├── token.js            # Token management utilities
+│   └── url.js              # URL and request utilities
 ├── config.js               # API configuration
-└── new-index.js            # New modular API entry point
+├── new-api.js              # New modular API client
+└── api.js                  # Legacy API client (deprecated)
+```
+
+## Migration Guide
+
+### From Legacy to New API
+
+The legacy `api.js` has been refactored into modular services and utilities. Here's how to migrate:
+
+1. **Update Imports**
+   - Replace `import api from './api'` with specific service imports:
+   
+   ```javascript
+   // Old way
+   import api from './api';
+   
+   // New way
+   import { authService } from './services/auth/AuthService';
+   import { projectService } from './services/projects/ProjectService';
+   import { fileService } from './services/files/FileService';
+   import { templateService } from './services/templates/TemplateService';
+   ```
+
+2. **Authentication**
+   ```javascript
+   // Old way
+   const token = await api.getAuthToken();
+   await api.login(username, password);
+   await api.logout();
+   
+   // New way
+   const token = await authService.getAuthToken();
+   await authService.login(username, password);
+   await authService.logout();
+   ```
+
+3. **Projects**
+   ```javascript
+   // Old way
+   const projects = await api.getProjects();
+   const project = await api.getProject(projectId);
+   
+   // New way
+   const projects = await projectService.getProjects();
+   const project = await projectService.getProject(projectId);
+   ```
+
+4. **Files**
+   ```javascript
+   // Old way
+   const files = await api.getProjectFiles(projectId);
+   const content = await api.readFile(projectId, filePath);
+   
+   // New way
+   const files = await fileService.getProjectFiles(projectId);
+   const content = await fileService.readFile(projectId, filePath);
+   ```
+
+5. **Templates**
+   ```javascript
+   // Old way
+   const templates = await api.getTemplates();
+   
+   // New way
+   const templates = await templateService.getTemplates();
+   ```
+
+### New Features
+
+1. **Token Management**
+   - Centralized token handling in `utils/token.js`
+   - Automatic token refresh
+   - Multiple storage backends (localStorage, sessionStorage)
+
+2. **Enhanced Fetch**
+   - Built-in retry logic
+   - Timeout handling
+   - Request deduplication
+   - Automatic error handling
+
+3. **Error Handling**
+   - Standardized error classes
+   - Detailed error information
+   - Automatic error logging
+
+## Utility Modules
+
+### Token Management (`utils/token.js`)
+
+Handles JWT token storage, validation, and refresh:
+
+```javascript
+import { 
+  getAuthToken, 
+  storeToken, 
+  clearAuthData, 
+  initAuthToken 
+} from './utils/token';
+
+// Initialize token on app startup
+await initAuthToken();
+
+// Get current token
+const token = getAuthToken();
+
+// Store new token
+storeToken(token, refreshToken, expiresIn);
+
+// Clear all auth data
+clearAuthData();
+```
+
+### URL and Request Utilities (`utils/url.js`)
+
+Provides URL management and request helpers:
+
+```javascript
+import { 
+  getCurrentBaseUrl,
+  tryNextFallbackUrl,
+  createFormData,
+  debounce
+} from './utils/url';
+
+// Get current API base URL
+const baseUrl = getCurrentBaseUrl();
+
+// Try next fallback URL
+const hasNext = tryNextFallbackUrl();
+
+// Create form data
+const formData = createFormData({
+  file: fileObject,
+  metadata: { name: 'test' }
+});
+
+// Debounce function calls
+debounce('search', () => {
+  // Your search logic
+}, 300);
 ```
 
 ## Services

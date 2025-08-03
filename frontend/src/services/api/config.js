@@ -66,22 +66,22 @@ export const FALLBACK_URLS = fallbackUrls;
 // API endpoints
 export const ENDPOINTS = {
   AUTH: {
-    LOGIN: '/api/v1/auth/login',
-    LOGOUT: '/api/v1/auth/logout',
-    VALIDATE: '/api/v1/auth/validate',
-    ERROR: '/api/v1/auth/error',
-    ME: '/api/v1/auth/me',
-    REFRESH: '/api/v1/auth/refresh',
-    REGISTER: '/api/v1/auth/register'
+    LOGIN: '/v1/auth/login',
+    LOGOUT: '/v1/auth/logout',
+    VALIDATE: '/v1/auth/validate',
+    ERROR: '/v1/auth/error',
+    ME: '/v1/auth/me',
+    REFRESH: '/v1/auth/refresh',
+    REGISTER: '/v1/auth/register'
   },
   PROJECTS: {
-    BASE: '/api/v1/projects',
-    BY_ID: (id) => `/api/v1/projects/${id}`,
-    FILES: (id) => `/api/v1/projects/${id}/files`,
-    FILE: (projectId, filePath) => `/api/v1/projects/${projectId}/files/${encodeURIComponent(filePath)}`
+    BASE: '/v1/projects',
+    BY_ID: (id) => `/v1/projects/${id}`,
+    FILES: (id) => `/v1/projects/${id}/files`,
+    FILE: (projectId, filePath) => `/v1/projects/${projectId}/files/${encodeURIComponent(filePath)}`
   },
-  TEMPLATES: '/api/v1/templates',
-  EXECUTE: '/api/v1/execute'
+  TEMPLATES: '/v1/templates',
+  EXECUTE: '/v1/execute'
 };
 
 // Get token configuration from environment variables with fallbacks
