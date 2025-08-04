@@ -225,7 +225,7 @@ const ProjectPlanReview = ({
                   {projectName}
                 </h3>
                 <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-2">
-                  {plan.projectDescription || 'No description provided.'}
+                  {plan.projectDescription || plan.description || 'A new project created with Windsurf AI'}
                 </p>
               </div>
             </div>

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import PropTypes from 'prop-types';
 
-const HamburgerButton = ({ isOpen, onClick, isDarkMode = false }) => {
+// Using forwardRef to allow the component to receive a ref from parent
+const HamburgerButton = forwardRef(({ isOpen, onClick, isDarkMode = false }, ref) => {
   return (
     <button
+      ref={ref}
       className="hamburger-button"
       onClick={onClick}
       aria-label={isOpen ? 'Close menu' : 'Open menu'}
@@ -21,7 +23,7 @@ const HamburgerButton = ({ isOpen, onClick, isDarkMode = false }) => {
       ))}
     </button>
   );
-};
+});
 
 HamburgerButton.propTypes = {
   isOpen: PropTypes.bool.isRequired,

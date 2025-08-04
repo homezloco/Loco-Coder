@@ -9,6 +9,7 @@ import AppHeader from './AppHeader';
 import Login from '../../pages/Login';
 import LoadingSpinner from '../common/LoadingSpinner';
 import DashboardV2 from '../ProjectDashboard/DashboardV2';
+import { ApiStatusContext } from '../../contexts/ApiStatusContext';
 
 /**
  * AppMain component that serves as the main entry point for the application.
@@ -131,12 +132,34 @@ const AppMain = () => {
       handleBreadcrumbNavigate: () => {}
     };
     
+    // Create a simplified ApiStatusContext value for the dashboard view
+    const apiStatusContextValue = {
+      status: 'ok',
+      lastChecked: new Date().toISOString(),
+      error: null,
+      components: {},
+      metrics: {},
+      isInitialized: true,
+      isOnline: true,
+      isLoading: false,
+      isDegraded: false,
+      isRateLimited: false,
+      isOffline: false,
+      checkStatus: () => Promise.resolve(),
+      checkComponent: () => Promise.resolve(),
+      refreshAll: () => Promise.resolve(),
+      // Add isOnline function for ModelStatusIndicator component
+      isOnline: () => Promise.resolve(true)
+    };
+    
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <AppHeader {...headerProps} />
-        <div className="pt-16"> {/* Add padding to account for fixed header */}
-          <DashboardV2 isDarkMode={settings?.theme === 'dark'} />
-        </div>
+        <ApiStatusContext.Provider value={apiStatusContextValue}>
+          <AppHeader {...headerProps} />
+          <div className="pt-16"> {/* Add padding to account for fixed header */}
+            <DashboardV2 isDarkMode={settings?.theme === 'dark'} />
+          </div>
+        </ApiStatusContext.Provider>
       </div>
     );
   }

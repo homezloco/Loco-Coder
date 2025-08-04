@@ -62,9 +62,8 @@ const AIDiagnosticTool = ({
     // For now, we'll just display what would be done
   };
 
-  if (!isOpen) return null;
-
   // Format last check time for display
+  // IMPORTANT: Define hooks before any conditional returns to maintain hooks order
   const formatLastCheckTime = useCallback((time) => {
     if (!time) return 'Never';
     
@@ -81,6 +80,8 @@ const AIDiagnosticTool = ({
     
     return checkTime.toLocaleString();
   }, []);
+
+  if (!isOpen) return null;
 
   // Get status display info
   const getStatusDisplay = (status) => {

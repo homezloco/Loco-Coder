@@ -18,8 +18,17 @@ const ModelStatusIndicator = ({ className = '' }) => {
       const stats = modelFallbackManager.getModelHealthStats();
       setModelStats(stats);
       
-      const online = await api.isOnline();
-      setIsOffline(!online);
+      try {
+        // Check if api.isOnline exists before calling it
+        const online = typeof api.isOnline === 'function' 
+          ? await api.isOnline() 
+          : navigator.onLine; // Fallback to browser's online status
+        setIsOffline(!online);
+      } catch (error) {
+        console.warn('Failed to check online status:', error);
+        // Default to browser's navigator.onLine as fallback
+        setIsOffline(!navigator.onLine);
+      }
     };
     
     checkModelStatus();
