@@ -1045,6 +1045,7 @@ yarn-error.log*
         updatedAt: timestamp,
         files: processedFiles.length ? processedFiles : DEFAULT_PROJECT_STRUCTURE.files,
         tags: Array.isArray(plan.tags) ? plan.tags : [],
+        logo: plan.logo, // Include the logo in the project data
         // Include the full plan in the project data
         plan: {
           ...plan,
