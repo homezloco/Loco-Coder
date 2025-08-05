@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ailang-adapter
+  labels:
+    app: ailang-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ailang-adapter
+  template:
+    metadata:
+      labels:
+        app: ailang-adapter
+    spec:
+      containers:
+      - name: ailang-adapter
+        image: ${REGISTRY}/${ADAPTER_IMAGE_NAME}:${TAG}
+        command: ["service"]
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: CHECK_INTERVAL
+          value: "86400"
+        - name: AILANG_API_HOST
+          value: "localhost"
+        - name: AILANG_API_PORT
+          value: "8000"
+        ports:
+        - containerPort: 8000
+          name: api
+        volumeMounts:
+        - name: config
+          mountPath: /app/backend/config
+        - name: logs
+          mountPath: /app/backend/logs
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - /app/backend/tools/ailang_health_check.py
+            - --mode=basic
+            - --format=json
+          initialDelaySeconds: 60
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - /app/backend/tools/ailang_health_check.py
+            - --mode=basic
+            - --format=json
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          exec:
+            command:
+            - python
+            - /app/backend/tools/ailang_health_check.py
+            - --mode=basic
+            - --format=json
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: ailang-config
+      - name: logs
+        emptyDir: {}

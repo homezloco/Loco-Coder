@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FiX, FiSearch, FiZap, FiCode, FiDatabase, FiGlobe, FiFile, FiChevronRight, FiInfo } from 'react-icons/fi';
+import { FiX, FiSearch, FiZap, FiCode, FiDatabase, FiGlobe, FiFile, FiChevronRight, FiInfo, FiCheck, FiEdit } from 'react-icons/fi';
 import TemplatePreview from './TemplatePreview';
+import ProjectGenerator from '../../services/projectGenerator';
+import { generateProjectPlan } from '../../services/aiService';
 
 const templates = [
   {
@@ -46,12 +48,62 @@ const ProjectCreator = ({ isOpen, onClose, onCreate }) => {
   const [projectDescription, setProjectDescription] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTags, setSelectedTags] = useState([]);
+  
+  // New states for enhanced workflow
+  const [projectIdea, setProjectIdea] = useState('');
+  const [generatedPlan, setGeneratedPlan] = useState(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState({ status: '', message: '' });
+  const [editMode, setEditMode] = useState(false);
+  const [generatedLogo, setGeneratedLogo] = useState(null);
+  const [generatedArchitecture, setGeneratedArchitecture] = useState(null);
+  const [generatedFramework, setGeneratedFramework] = useState(null);
 
   const filteredTemplates = templates.filter(template => 
     template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     template.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
     template.tags.some(tag => tag.includes(searchQuery.toLowerCase()))
   );
+
+  // Generate project plan from user idea
+  const handleGeneratePlan = async () => {
+    if (!projectIdea.trim()) {
+      // Show error toast or validation message
+      return;
+    }
+
+    setIsGeneratingPlan(true);
+    setGenerationProgress({ status: 'starting', message: 'Analyzing your project idea...' });
+
+    try {
+      // Call AI service to generate project plan
+      const plan = await generateProjectPlan(projectIdea, selectedTemplate?.id);
+      
+      setGeneratedPlan(plan);
+      setProjectName(plan.projectName || '');
+      setProjectDescription(plan.projectDescription || '');
+      setGeneratedLogo(plan.logo || null);
+      setGeneratedArchitecture(plan.architecture || null);
+      setGeneratedFramework(plan.framework || null);
+      
+      // Auto-select tags based on generated plan
+      if (plan.tags && selectedTemplate) {
+        const validTags = plan.tags.filter(tag => selectedTemplate.tags.includes(tag));
+        setSelectedTags(validTags);
+      }
+      
+      setGenerationProgress({ status: 'success', message: 'Project plan generated successfully!' });
+      setStep(3); // Move to plan review step
+    } catch (error) {
+      console.error('Error generating project plan:', error);
+      setGenerationProgress({ 
+        status: 'error', 
+        message: error.message || 'Failed to generate project plan' 
+      });
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
 
   const handleCreate = async () => {
     console.log('ProjectCreator: Starting project creation');
@@ -60,143 +112,65 @@ const ProjectCreator = ({ isOpen, onClose, onCreate }) => {
     const trimmedName = projectName.trim();
     if (!trimmedName) {
       console.error('Project name is required');
-      showErrorToast('Project name is required');
+      // Show error toast
       return;
     }
     
     setIsCreating(true);
+    setGenerationProgress({ status: 'starting', message: 'Creating your project...' });
     
     try {
       console.log('Creating project with template:', selectedTemplate);
       
-      // Get default files based on template or use empty array
-      const getDefaultFiles = () => {
-        if (selectedTemplate?.id === 'web') {
-          return [
-            {
-              path: 'index.html',
-              content: `<!DOCTYPE html>
-<html>
-<head>
-  <title>${trimmedName}</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <h1>Welcome to ${trimmedName}</h1>
-  <div id="app">
-    <p>${projectDescription || 'Start building your amazing project!'}</p>
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>`
-            },
-            {
-              path: 'styles.css',
-              content: `/* ${trimmedName} - Main Styles */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  line-height: 1.6;
-  margin: 0;
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-  color: #333;
-  background-color: #fff;
-}
-
-h1 {
-  color: #2c3e50;
-  border-bottom: 2px solid #eee;
-  padding-bottom: 10px;
-}`
-            },
-            {
-              path: 'app.js',
-              content: `// ${trimmedName} - Main JavaScript
-console.log("${trimmedName} initialized!");
-
-// Add your JavaScript here
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('${trimmedName} is ready!');
-});`
-            },
-            {
-              path: 'README.md',
-              content: `# ${trimmedName}
-
-## Description
-${projectDescription || 'A new project created with Coder AI'}
-
-## Getting Started
-1. Open index.html in your browser
-2. Start coding!
-
-## Project Structure
-- \`index.html\`: Main HTML file
-- \`styles.css\`: CSS styles
-- \`app.js\`: JavaScript code`
-            }
-          ];
-        }
-        return [];
-      };
-      
-      // Prepare project data with validation
-      const projectData = {
-        id: `project_${Date.now()}`,
+      // Use the generated plan or create a default structure
+      const projectInfo = {
         name: trimmedName,
-        description: projectDescription.trim() || 'A new project created with Coder AI',
-        template: selectedTemplate?.id || 'custom',
-        category: selectedTemplate?.category || 'other',
-        tags: [...new Set([
-          ...(selectedTemplate?.tags || []), 
-          ...selectedTags
-        ].filter(Boolean))],
-        files: getDefaultFiles(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isFavorite: false,
+        description: projectDescription,
+        template: selectedTemplate?.id,
+        tags: selectedTags,
         metadata: {
-          createdWith: 'Coder AI',
-          version: '1.0.0',
-          template: selectedTemplate?.id || 'custom'
+          idea: projectIdea,
+          framework: generatedFramework,
+          architecture: generatedArchitecture,
+          logo: generatedLogo
         }
       };
       
-      console.log('Project data prepared:', projectData);
+      // Use the ProjectGenerator service to create the project
+      const project = await ProjectGenerator.generateProject(
+        projectInfo, 
+        generatedPlan || { projectDescription, structure: {} },
+        (progress) => {
+          setGenerationProgress(progress);
+        }
+      );
       
-      // Call the parent's onCreate handler
-      const result = await onCreate(projectData);
+      // Call the onCreate callback with the generated project
+      onCreate(project);
       
-      if (!result) {
-        throw new Error('Project creation returned no result');
-      }
+      // Reset the form
+      resetForm();
       
-      console.log('Project created successfully, closing creator');
-      showSuccessToast(`Project "${trimmedName}" created successfully!`);
+      // Close the modal
       onClose();
     } catch (error) {
-      console.error('Error in ProjectCreator.handleCreate:', {
-        error: error.message,
-        stack: error.stack,
-        projectName: projectName,
-        selectedTemplate: selectedTemplate?.id
+      console.error('Error creating project:', error);
+      setGenerationProgress({ 
+        status: 'error', 
+        message: error.message || 'Failed to create project' 
       });
-      
-      // Don't close on error - let the error toast show and allow retry
     } finally {
       setIsCreating(false);
     }
   };
-  
+
   const handleTemplateSelect = (template) => {
     setSelectedTemplate(template);
-    // Auto-advance to next step if not already there
-    if (step === 1) setStep(2);
+    setSelectedTags([]); // Reset tags when template changes
   };
-  
+
   const togglePreview = (e) => {
-    e.stopPropagation();
+    e.preventDefault();
     setShowPreview(!showPreview);
   };
 
@@ -204,15 +178,23 @@ ${projectDescription || 'A new project created with Coder AI'}
     setStep(1);
     setSearchQuery('');
     setSelectedTemplate(null);
+    setShowPreview(false);
     setProjectName('');
     setProjectDescription('');
     setSelectedTags([]);
-    setShowPreview(false);
+    setProjectIdea('');
+    setGeneratedPlan(null);
+    setIsGeneratingPlan(false);
+    setGenerationProgress({ status: '', message: '' });
+    setEditMode(false);
+    setGeneratedLogo(null);
+    setGeneratedArchitecture(null);
+    setGeneratedFramework(null);
   };
 
+  // If the modal is closed, reset the form
   useEffect(() => {
     if (!isOpen) {
-      // Reset form when modal is closed
       resetForm();
     }
   }, [isOpen]);
@@ -220,143 +202,339 @@ ${projectDescription || 'A new project created with Coder AI'}
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-start justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity" onClick={onClose}>
-          <div className="absolute inset-0 bg-black opacity-75"></div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden max-w-4xl w-full max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+            {step === 1 && 'Select Project Template'}
+            {step === 2 && 'Describe Your Project Idea'}
+            {step === 3 && 'Review Project Plan'}
+            {step === 4 && 'Project Details'}
+          </h2>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+            onClick={onClose}
+          >
+            <span className="sr-only">Close</span>
+            <FiX className="h-6 w-6" />
+          </button>
         </div>
-
-        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         
-        <div className="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl w-full max-h-[90vh] flex flex-col">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                {step === 1 ? 'Create a new project' : 'Project details'}
-              </h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-500 dark:text-gray-300 dark:hover:text-white"
-                aria-label="Close"
-              >
-                <FiX className="h-6 w-6" />
-              </button>
-            </div>
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {step === 1 ? (
-              <>
-                <div className="relative mb-6">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiSearch className="h-5 w-5 text-gray-400" />
-                  </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Step 1: Template Selection */}
+          {step === 1 && (
+            <div>
+              <div className="mb-4">
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    className="pl-10 w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="Search templates..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    autoFocus
                   />
                 </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {filteredTemplates.map((template) => (
-                    <div
-                      key={template.id}
-                      onClick={() => handleTemplateSelect(template)}
-                      className={`relative p-4 rounded-lg border cursor-pointer transition-all ${
-                        selectedTemplate?.id === template.id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/30'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700'
-                      }`}
-                    >
-                      <div className="flex items-start">
-                        <div className="flex-shrink-0 mt-1">
-                          {template.icon}
-                        </div>
-                        <div className="ml-4 flex-1 min-w-0">
-                          <div className="flex justify-between items-start">
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                              {template.name}
-                            </h3>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTemplate(template);
-                                setShowPreview(true);
-                              }}
-                              className="text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400"
-                              aria-label="Preview template"
-                            >
-                              <FiInfo className="w-5 h-5" />
-                            </button>
-                          </div>
-                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {template.description}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {template.tags.slice(0, 3).map((tag) => (
-                              <span 
-                                key={tag} 
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                            {template.tags.length > 3 && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                                +{template.tags.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredTemplates.map((template) => (
+                  <div
+                    key={template.id}
+                    className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                      selectedTemplate?.id === template.id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}
+                    onClick={() => handleTemplateSelect(template)}
+                  >
+                    <div className="flex items-center">
+                      {template.icon}
+                      <div className="ml-3">
+                        <h3 className="font-medium text-gray-900 dark:text-white">
+                          {template.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {template.description}
+                        </p>
                       </div>
-                      {selectedTemplate?.id === template.id && (
-                        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-                          <button
-                            onClick={togglePreview}
-                            className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
-                          >
-                            {showPreview ? 'Hide preview' : 'Show preview'}
-                            <FiChevronRight className={`ml-1 w-3 h-3 transition-transform ${showPreview ? 'transform rotate-90' : ''}`} />
-                          </button>
-                          {showPreview && selectedTemplate.id === template.id && (
-                            <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-                              <TemplatePreview 
-                                template={selectedTemplate} 
-                                onSelect={() => {}}
-                                onClose={() => setShowPreview(false)}
-                                compact={true}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
-                  ))}
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {template.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Step 2: Project Idea Input */}
+          {step === 2 && (
+            <div>
+              <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md">
+                <div className="flex">
+                  <FiInfo className="h-5 w-5 text-blue-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                      Describe your project idea
+                    </h3>
+                    <div className="mt-2 text-sm text-blue-700 dark:text-blue-200">
+                      <p>
+                        Be as specific as possible. Include details about:
+                      </p>
+                      <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>What problem your project solves</li>
+                        <li>Target users or audience</li>
+                        <li>Key features or functionality</li>
+                        <li>Technology preferences (if any)</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-              </>
-            ) : (
+              </div>
+              
+              <div className="mb-4">
+                <label htmlFor="project-idea" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Your Project Idea
+                </label>
+                <textarea
+                  id="project-idea"
+                  rows="6"
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Describe your project idea in detail..."
+                  value={projectIdea}
+                  onChange={(e) => setProjectIdea(e.target.value)}
+                />
+              </div>
+              
+              {isGeneratingPlan && (
+                <div className="mt-6">
+                  <div className="flex items-center">
+                    <div className="mr-3">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {generationProgress.message || 'Generating project plan...'}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {generationProgress.status === 'error' && (
+                <div className="mt-4 bg-red-50 dark:bg-red-900/20 p-4 rounded-md">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <FiInfo className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800 dark:text-red-300">
+                        Error generating project plan
+                      </h3>
+                      <div className="mt-2 text-sm text-red-700 dark:text-red-200">
+                        <p>{generationProgress.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Step 3: Review Generated Plan */}
+          {step === 3 && generatedPlan && (
+            <div>
+              <div className="mb-6 bg-green-50 dark:bg-green-900/20 p-4 rounded-md">
+                <div className="flex">
+                  <FiCheck className="h-5 w-5 text-green-400 mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800 dark:text-green-300">
+                      Project plan generated successfully!
+                    </h3>
+                    <div className="mt-2 text-sm text-green-700 dark:text-green-200">
+                      <p>
+                        Review the generated plan below. You can make adjustments if needed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Project Name */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                    Project Name
+                  </h3>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:text-blue-500 text-sm flex items-center"
+                    onClick={() => setEditMode(!editMode)}
+                  >
+                    <FiEdit className="h-4 w-4 mr-1" />
+                    {editMode ? 'Done' : 'Edit'}
+                  </button>
+                </div>
+                
+                {editMode ? (
+                  <input
+                    type="text"
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                  />
+                ) : (
+                  <p className="text-gray-700 dark:text-gray-300 text-xl font-semibold">
+                    {projectName}
+                  </p>
+                )}
+              </div>
+              
+              {/* Project Logo */}
+              {generatedLogo && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Project Logo
+                  </h3>
+                  <div className="flex justify-center p-4 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600">
+                    {generatedLogo.type === 'svg' ? (
+                      <div dangerouslySetInnerHTML={{ __html: generatedLogo.content }} />
+                    ) : (
+                      <img 
+                        src={generatedLogo.content} 
+                        alt="Project Logo" 
+                        className="h-32 w-32 object-contain" 
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Project Description */}
+              <div className="mb-6">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  Project Description
+                </h3>
+                {editMode ? (
+                  <textarea
+                    rows="4"
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                    value={projectDescription}
+                    onChange={(e) => setProjectDescription(e.target.value)}
+                  />
+                ) : (
+                  <p className="text-gray-700 dark:text-gray-300">
+                    {projectDescription}
+                  </p>
+                )}
+              </div>
+              
+              {/* Framework */}
+              {generatedFramework && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Framework & Technologies
+                  </h3>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md">
+                    {editMode ? (
+                      <textarea
+                        rows="3"
+                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                        value={generatedFramework}
+                        onChange={(e) => setGeneratedFramework(e.target.value)}
+                      />
+                    ) : (
+                      <p className="text-gray-700 dark:text-gray-300">
+                        {generatedFramework}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Architecture */}
+              {generatedArchitecture && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Architecture
+                  </h3>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md">
+                    {editMode ? (
+                      <textarea
+                        rows="6"
+                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                        value={generatedArchitecture}
+                        onChange={(e) => setGeneratedArchitecture(e.target.value)}
+                      />
+                    ) : (
+                      <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        {generatedArchitecture}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Tags */}
+              {selectedTemplate?.tags && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Tags
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTemplate.tags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                          selectedTags.includes(tag)
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                        onClick={() => {
+                          setSelectedTags(prev =>
+                            prev.includes(tag)
+                              ? prev.filter(t => t !== tag)
+                              : [...prev, tag]
+                          );
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Step 4: Project Details (Original form) */}
+          {step === 4 && (
+            <div>
               <div className="space-y-4">
                 <div>
                   <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Project name
+                    Project Name
                   </label>
                   <input
                     type="text"
                     id="project-name"
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white sm:text-sm"
-                    placeholder="my-awesome-project"
+                    placeholder="My Awesome Project"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
-                    autoFocus
                   />
                 </div>
-
+                
                 <div>
                   <label htmlFor="project-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Description (optional)
@@ -401,42 +579,84 @@ ${projectDescription || 'A new project created with Coder AI'}
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex justify-between flex-shrink-0">
+          {step > 1 && (
+            <button
+              type="button"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              onClick={() => setStep(step - 1)}
+              disabled={isGeneratingPlan || isCreating}
+            >
+              Back
+            </button>
+          )}
+          <div className="ml-auto">
+            {step === 1 && (
+              <button
+                type="button"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={!selectedTemplate}
+                onClick={() => setStep(2)}
+              >
+                Next
+                <FiChevronRight className="ml-2 -mr-1 h-5 w-5" />
+              </button>
             )}
-          </div>
-          
-          {/* Footer */}
-          <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex justify-between flex-shrink-0">
+            
             {step === 2 && (
               <button
                 type="button"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                onClick={() => setStep(1)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={!projectIdea.trim() || isGeneratingPlan}
+                onClick={handleGeneratePlan}
               >
-                Back
+                {isGeneratingPlan ? (
+                  <>
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    Generate Plan
+                    <FiZap className="ml-2 -mr-1 h-5 w-5" />
+                  </>
+                )}
               </button>
             )}
-            <div className="ml-auto">
-              {step === 1 ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                  disabled={!selectedTemplate}
-                  onClick={() => setStep(2)}
-                >
-                  Next
-                  <FiChevronRight className="ml-2 -mr-1 h-5 w-5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                  disabled={!projectName.trim() || isCreating}
-                  onClick={handleCreate}
-                >
-                  {isCreating ? 'Creating...' : 'Create project'}
-                </button>
-              )}
-            </div>
+            
+            {step === 3 && (
+              <button
+                type="button"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={!projectName.trim() || isCreating}
+                onClick={handleCreate}
+              >
+                {isCreating ? (
+                  <>
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Creating...
+                  </>
+                ) : (
+                  'Create Project'
+                )}
+              </button>
+            )}
+            
+            {step === 4 && (
+              <button
+                type="button"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={!projectName.trim() || isCreating}
+                onClick={handleCreate}
+              >
+                {isCreating ? 'Creating...' : 'Create project'}
+              </button>
+            )}
           </div>
         </div>
       </div>

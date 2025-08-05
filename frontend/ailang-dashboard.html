@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AILang Dashboard</title>
+  <!-- Load React and ReactDOM from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Load Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Load Material UI -->
+  <script src="https://unpkg.com/@mui/material@5.14.5/umd/material-ui.production.min.js"></script>
+  <!-- Load Roboto font -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', sans-serif;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      margin-bottom: 20px;
+    }
+    .card {
+      background-color: white;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 15px;
+    }
+    .status {
+      padding: 8px 16px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .status-healthy {
+      background-color: #e6f4ea;
+      color: #137333;
+    }
+    .status-warning {
+      background-color: #fef7e0;
+      color: #b06000;
+    }
+    .status-error {
+      background-color: #fce8e6;
+      color: #c5221f;
+    }
+    .detail-item {
+      margin-bottom: 5px;
+    }
+    .logs-container {
+      max-height: 300px;
+      overflow-y: auto;
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      white-space: pre-wrap;
+    }
+    .log-info {
+      color: #1a73e8;
+    }
+    .log-warning {
+      color: #b06000;
+    }
+    .log-error {
+      color: #c5221f;
+    }
+    .log-debug {
+      color: #5f6368;
+    }
+    .button {
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .button:hover {
+      background-color: #174ea6;
+    }
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 200px;
+    }
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border-left-color: #1a73e8;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error-message {
+      background-color: #fce8e6;
+      color: #c5221f;
+      padding: 16px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="dashboard">Loading AILang Dashboard...</div>
+  </div>
+
+  <script>
+    // API base URL - pointing directly to our standalone AILang API server
+    const API_BASE_URL = 'http://localhost:8002';
+    
+    // Dashboard state
+    let health = null;
+    let logs = [];
+    let version = null;
+    let loading = true;
+    let error = null;
+    
+    // Fetch data from API
+    async function fetchData() {
+      try {
+        loading = true;
+        error = null;
+        renderDashboard();
+        
+        // Fetch health data
+        const healthResponse = await fetch(`${API_BASE_URL}/api/health`);
+        health = await healthResponse.json();
+        
+        // Fetch logs
+        const logsResponse = await fetch(`${API_BASE_URL}/api/logs?lines=10`);
+        const logsData = await logsResponse.json();
+        logs = logsData.logs || [];
+        
+        // Fetch version
+        const versionResponse = await fetch(`${API_BASE_URL}/api/version`);
+        version = await versionResponse.json();
+        
+        loading = false;
+        renderDashboard();
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        error = `Failed to connect to the AILang API server. Make sure it is running on port 8002.`;
+        loading = false;
+        renderDashboard();
+      }
+    }
+    
+    // Render the dashboard
+    function renderDashboard() {
+      const dashboardElement = document.getElementById('dashboard');
+      
+      if (loading) {
+        dashboardElement.innerHTML = `
+          <div class="loading">
+            <div class="spinner"></div>
+          </div>
+        `;
+        return;
+      }
+      
+      if (error) {
+        dashboardElement.innerHTML = `
+          <div class="error-message">${error}</div>
+          <button class="button" onclick="fetchData()">Retry Connection</button>
+        `;
+        return;
+      }
+      
+      dashboardElement.innerHTML = `
+        <div class="header">
+          <h1>AILang Dashboard</h1>
+        </div>
+        
+        <!-- Health Status -->
+        <div class="card">
+          <div class="card-title">System Health</div>
+          <div class="status ${health?.status === 'healthy' ? 'status-healthy' : 'status-warning'}">
+            Status: ${health?.status || 'Unknown'}
+          </div>
+          ${health?.details ? `
+            <div class="detail-item">CPU: ${health.details.cpu_usage}%</div>
+            <div class="detail-item">Memory: ${health.details.memory_usage}%</div>
+            <div class="detail-item">Disk: ${health.details.disk_usage}%</div>
+          ` : ''}
+        </div>
+        
+        <!-- Version Info -->
+        <div class="card">
+          <div class="card-title">Version Information</div>
+          ${version ? `
+            <div class="detail-item">Version: ${version.version}</div>
+            <div class="detail-item">Last Updated: ${version.last_updated}</div>
+            <div class="detail-item">Update Available: ${version.update_available ? 'Yes' : 'No'}</div>
+          ` : ''}
+        </div>
+        
+        <!-- Logs -->
+        <div class="card">
+          <div class="card-title">Recent Logs</div>
+          <div class="logs-container">
+            ${logs.length > 0 ? logs.map(log => `
+              <div class="log-entry log-${log.level.toLowerCase()}">
+                [${log.timestamp}] ${log.level}: ${log.message}
+              </div>
+            `).join('') : '<div class="log-entry">No logs available</div>'}
+          </div>
+        </div>
+        
+        <button class="button" onclick="fetchData()">Refresh Dashboard</button>
+      `;
+    }
+    
+    // Initial data fetch
+    fetchData();
+  </script>
+</body>
+</html>

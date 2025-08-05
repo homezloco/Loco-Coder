@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  ailang-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile.ailang
+    image: ailang-adapter:latest
+    container_name: ailang-adapter
+    restart: unless-stopped
+    volumes:
+      - ./backend/logs:/app/backend/logs
+      - ./backend/config:/app/backend/config
+    environment:
+      - LOG_LEVEL=INFO
+      - CHECK_INTERVAL=86400
+      # Uncomment and set these values for GitHub API authentication
+      # - GITHUB_TOKEN=your_github_token
+      # Uncomment and set these values for email notifications
+      # - NOTIFICATION_EMAIL=your_email@example.com
+      # - SMTP_SERVER=smtp.gmail.com
+      # - SMTP_PORT=587
+      # - SMTP_USERNAME=your_username
+      # - SMTP_PASSWORD=your_password
+      # Uncomment and set this value for Slack notifications
+      # - SLACK_WEBHOOK_URL=your_slack_webhook_url
+    command: service
+
+  # Optional: Add a web UI for monitoring the AILang adapter system
+  ailang-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    image: ailang-dashboard:latest
+    container_name: ailang-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - ailang-adapter
+    volumes:
+      - ./backend/logs:/app/logs:ro
+    environment:
+      - API_URL=http://ailang-adapter:8000
+
+networks:
+  default:
+    name: ailang-network

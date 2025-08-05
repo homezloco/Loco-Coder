@@ -1,0 +1,168 @@
+{
+  "total": 8,
+  "passed": 7,
+  "failed": 1,
+  "skipped": 0,
+  "tests": [
+    {
+      "name": "api_root",
+      "passed": false,
+      "message": "API root endpoint returned status 500",
+      "details": {
+        "status": 500
+      },
+      "timestamp": "2025-08-05T10:49:40.767875"
+    },
+    {
+      "name": "health_endpoint",
+      "passed": true,
+      "message": "Health endpoint is accessible and returns expected data",
+      "details": {
+        "data": {
+          "status": "healthy",
+          "timestamp": "2025-08-05T10:49:40.769722",
+          "components": [
+            {
+              "name": "AILang Parser",
+              "status": "healthy",
+              "version": "0.2.1",
+              "last_check": "2025-08-05T10:49:40.769712"
+            },
+            {
+              "name": "Model Loader",
+              "status": "healthy",
+              "version": "0.1.5",
+              "last_check": "2025-08-05T10:49:40.769720"
+            },
+            {
+              "name": "Task Executor",
+              "status": "healthy",
+              "version": "0.1.3",
+              "last_check": "2025-08-05T10:49:40.769721"
+            }
+          ],
+          "message": "All components are functioning normally"
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.770353"
+    },
+    {
+      "name": "logs_endpoint",
+      "passed": true,
+      "message": "Logs endpoint is accessible and returns expected data",
+      "details": {
+        "log_count": 10
+      },
+      "timestamp": "2025-08-05T10:49:40.772020"
+    },
+    {
+      "name": "version_endpoint",
+      "passed": true,
+      "message": "Version endpoint is accessible and returns expected data",
+      "details": {
+        "data": {
+          "adapter_version": "0.3.2",
+          "adapter_last_update": "2025-07-15T14:30:45",
+          "ailang_current_version": "0.2.1",
+          "ailang_latest_version": "0.2.3",
+          "update_available": true,
+          "days_since_update": 21,
+          "update_status": "Update available to version 0.2.3"
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.772720"
+    },
+    {
+      "name": "update_endpoint",
+      "passed": true,
+      "message": "Update endpoint is accessible and returns expected data",
+      "details": {
+        "data": {
+          "success": true,
+          "message": "Update check completed",
+          "update_available": true,
+          "current_version": "0.2.1",
+          "latest_version": "0.2.3"
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.773789"
+    },
+    {
+      "name": "frontend_compatibility_/api/health",
+      "passed": true,
+      "message": "Endpoint /api/health returns data compatible with frontend components",
+      "details": {
+        "data": {
+          "status": "healthy",
+          "timestamp": "2025-08-05T10:49:40.774159",
+          "components": [
+            {
+              "name": "AILang Parser",
+              "status": "healthy",
+              "version": "0.2.1",
+              "last_check": "2025-08-05T10:49:40.774128"
+            },
+            {
+              "name": "Model Loader",
+              "status": "healthy",
+              "version": "0.1.5",
+              "last_check": "2025-08-05T10:49:40.774155"
+            },
+            {
+              "name": "Task Executor",
+              "status": "healthy",
+              "version": "0.1.3",
+              "last_check": "2025-08-05T10:49:40.774158"
+            }
+          ],
+          "message": "All components are functioning normally"
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.774750"
+    },
+    {
+      "name": "frontend_compatibility_/api/logs",
+      "passed": true,
+      "message": "Endpoint /api/logs returns data compatible with frontend components",
+      "details": {
+        "data": {
+          "logs": [
+            "2025-08-05 10:00:01 INFO [AILangAdapter] Starting adapter service",
+            "2025-08-05 10:00:02 INFO [AILangAdapter] Loading configuration from /home/user/.ailang/config",
+            "2025-08-05 10:00:03 INFO [AILangParser] Initializing parser with grammar version 0.2.1",
+            "2025-08-05 10:00:04 INFO [ModelLoader] Loading model definitions",
+            "2025-08-05 10:00:05 INFO [TaskExecutor] Task executor initialized",
+            "2025-08-05 10:00:06 INFO [AILangAdapter] All components initialized successfully",
+            "2025-08-05 10:00:07 INFO [AILangAdapter] Adapter ready to process requests",
+            "2025-08-05 10:15:23 INFO [AILangParser] Processing model definition: agent_orchestration.ailang",
+            "2025-08-05 10:15:24 INFO [ModelLoader] Loading model: AgentOrchestrator",
+            "2025-08-05 10:15:25 INFO [TaskExecutor] Executing task: initialize_agent",
+            "2025-08-05 10:15:26 DEBUG [TaskExecutor] Task parameters: {\"agent_type\": \"assistant\", \"capabilities\": [\"text\", \"code\"]}",
+            "2025-08-05 10:15:27 INFO [TaskExecutor] Task completed successfully",
+            "2025-08-05 10:30:01 INFO [AILangAdapter] Checking for updates",
+            "2025-08-05 10:30:02 INFO [AILangAdapter] No updates available",
+            "2025-08-05 10:30:03 INFO [AILangAdapter] Next update check scheduled in 1 hour"
+          ]
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.775769"
+    },
+    {
+      "name": "frontend_compatibility_/api/version",
+      "passed": true,
+      "message": "Endpoint /api/version returns data compatible with frontend components",
+      "details": {
+        "data": {
+          "adapter_version": "0.3.2",
+          "adapter_last_update": "2025-07-15T14:30:45",
+          "ailang_current_version": "0.2.1",
+          "ailang_latest_version": "0.2.3",
+          "update_available": true,
+          "days_since_update": 21,
+          "update_status": "Update available to version 0.2.3"
+        }
+      },
+      "timestamp": "2025-08-05T10:49:40.776600"
+    }
+  ]
+}

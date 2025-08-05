@@ -15,6 +15,9 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
 
+# Flag to track if SQLAlchemy is available
+sqlalchemy_available = False
+
 # Import necessary modules with fallback mechanism
 try:
     import jwt
@@ -27,6 +30,7 @@ try:
     from sqlalchemy.orm import sessionmaker, relationship
     from datetime import datetime
     PYDANTIC_V2 = True
+    sqlalchemy_available = True
 except ImportError as e:
     logging.warning(f"Some dependencies not available: {e}")
     # Fallback for Pydantic v1
@@ -36,6 +40,16 @@ except ImportError as e:
         
         # Make validator available at module level
         validator = pydantic_validator
+        
+        # Try to import SQLAlchemy separately if it wasn't imported with the main dependencies
+        try:
+            import sqlalchemy as sa
+            from sqlalchemy.ext.declarative import declarative_base
+            from sqlalchemy.orm import sessionmaker, relationship
+            sqlalchemy_available = True
+        except ImportError:
+            logging.warning("SQLAlchemy not available")
+            sqlalchemy_available = False
     except ImportError:
         # Define a minimal BaseModel fallback
         class BaseModel:
@@ -102,10 +116,10 @@ except ImportError:
     database_available = False
     
     # Local fallback for Base
-    try:
+    if sqlalchemy_available:
         from sqlalchemy.ext.declarative import declarative_base
         Base = declarative_base()
-    except ImportError:
+    else:
         # If SQLAlchemy isn't available, create a simple base class
         class Base:
             __tablename__ = ""
@@ -285,7 +299,7 @@ class Token(BaseModel):
     is_admin: bool
 
 # Database models (SQLAlchemy ORM)
-if database_available:
+if sqlalchemy_available:
     class UserModel(Base):
         __tablename__ = "users"
         
@@ -329,7 +343,7 @@ class UserManager:
         """Initialize user manager with available dependencies"""
         self.secret_key = secret_key or os.environ.get("SECRET_KEY") or self._generate_secret()
         self.db_session = db_session
-        self.storage_mode = "database" if database_available and db_session else "file"
+        self.storage_mode = "database" if sqlalchemy_available and db_session else "file"
         
         # Set up file storage path if needed
         if self.storage_mode == "file":

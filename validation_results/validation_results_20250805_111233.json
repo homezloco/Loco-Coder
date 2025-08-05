@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-08-05T11:12:33.478114",
+  "api_url": "http://localhost:8001",
+  "frontend_url": "http://localhost:5173",
+  "results": {
+    "System Status Dashboard": {
+      "status": "pass",
+      "notes": "none"
+    },
+    "Logs Viewer": {
+      "status": "pass",
+      "notes": "No issues reported"
+    },
+    "Version Information": {
+      "status": "pass",
+      "notes": "No issues reported"
+    },
+    "Update Functionality": {
+      "status": "pass",
+      "notes": "No issues reported"
+    },
+    "Responsive Design": {
+      "status": "pass",
+      "notes": "No issues reported"
+    }
+  }
+}

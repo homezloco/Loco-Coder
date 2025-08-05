@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { FiPlus, FiFolder } from 'react-icons/fi';
 
 // Context hooks
-import { useFeedback } from '../../feedback/FeedbackContext.jsx';
+import { useFeedback } from '../../feedback/FeedbackContext';
 import { useApi } from '../../../contexts/NewApiContext';
 
 // Components
@@ -19,7 +19,7 @@ import ChatToggle from './components/ChatToggle';
 
 // Hooks
 import useProjects from './hooks/useProjects';
-import useProjectCreation from './hooks/useProjectCreation.jsx';
+import useProjectCreation from './hooks/useProjectCreation';
 import useChat from './hooks/useChat';
 
 const DashboardV2 = ({ isDarkMode = false }) => {
@@ -64,11 +64,16 @@ const DashboardV2 = ({ isDarkMode = false }) => {
   const { showErrorToast } = useFeedback();
   
   // Handle project selection
-  const handleProjectSelect = (project) => {
-    // In a real app, this would navigate to the project editor
-    console.log('Selected project:', project);
-    // navigate(`/project/${project.id}`);
-  };
+  const handleProjectSelect = useCallback((project) => {
+    if (!project || !project.id) {
+      console.error('Cannot navigate to project: Invalid project or missing ID');
+      showErrorToast('Cannot open project: Invalid project data');
+      return;
+    }
+    
+    console.log('Selected project:', project.id);
+    window.location.href = `/project/${project.id}`;
+  }, [showErrorToast]);
   
   // Chat functionality
   const {

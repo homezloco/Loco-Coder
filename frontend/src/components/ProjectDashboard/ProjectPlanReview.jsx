@@ -261,6 +261,14 @@ const ProjectPlanReview = ({
                       <div>
                         <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Name</h5>
                         <p className="text-gray-900 dark:text-white">{projectName}</p>
+                        {projectName.startsWith('Project-') && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Using fallback name
+                          </p>
+                        )}
                       </div>
                       <div>
                         <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Generated</h5>
@@ -270,9 +278,19 @@ const ProjectPlanReview = ({
                       </div>
                       <div className="md:col-span-2">
                         <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</h5>
-                        <p className="text-gray-900 dark:text-white">
-                          {plan.projectDescription || 'No description provided.'}
-                        </p>
+                        <div>
+                          <p className="text-gray-900 dark:text-white">
+                            {plan.projectDescription || plan.description || 'A new project created with Windsurf AI'}
+                          </p>
+                          {(!plan.projectDescription && !plan.description) && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Using fallback description
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -338,7 +356,21 @@ const ProjectPlanReview = ({
                   Project Structure
                 </h4>
                 <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                  <FileTree structure={plan.structure} />
+                  {plan.structure ? (
+                    <FileTree structure={plan.structure} />
+                  ) : (
+                    <div>
+                      <div className="text-gray-500 dark:text-gray-400 italic">
+                        This project does not have a defined structure yet. A basic structure will be created when you generate the project.
+                      </div>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Using default structure
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -349,7 +381,19 @@ const ProjectPlanReview = ({
                   System Architecture
                 </h4>
                 <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg whitespace-pre-wrap font-mono text-sm">
-                  {plan.architecture}
+                  {plan.architecture ? plan.architecture : (
+                    <>
+                      <div>
+                        This project will use a standard architecture with proper separation of concerns. The specific architecture details will be determined during project generation based on the project requirements.
+                      </div>
+                      <div className="mt-4 text-xs text-amber-600 dark:text-amber-400 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Using default architecture description
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -360,20 +404,43 @@ const ProjectPlanReview = ({
                   Dependencies
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(plan.dependencies || {}).map(([category, deps]) => (
-                    <div key={category} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                      <h5 className="font-medium text-gray-900 dark:text-white mb-2">
-                        {category}
-                      </h5>
-                      <ul className="space-y-1">
-                        {deps.map((dep, i) => (
-                          <li key={i} className="text-sm text-gray-600 dark:text-gray-300">
-                            • {dep}
-                          </li>
-                        ))}
-                      </ul>
+                  {Object.entries(plan.dependencies || {}).length > 0 ? (
+                    Object.entries(plan.dependencies || {}).map(([category, deps]) => (
+                      <div key={category} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                        <h5 className="font-medium text-gray-900 dark:text-white mb-2">
+                          {category}
+                        </h5>
+                        <ul className="space-y-1">
+                          {deps.map((dep, i) => (
+                            <li key={i} className="text-sm text-gray-600 dark:text-gray-300">
+                              • {dep}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-span-2 bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                      <p className="text-gray-500 dark:text-gray-400 italic">
+                        Dependencies will be determined during project generation based on the project requirements. Standard dependencies for modern web development will be included.
+                      </p>
+                      <div className="mt-3">
+                        <h5 className="font-medium text-gray-900 dark:text-white mb-2">Common Dependencies</h5>
+                        <ul className="space-y-1">
+                          <li className="text-sm text-gray-600 dark:text-gray-300">• React (UI library)</li>
+                          <li className="text-sm text-gray-600 dark:text-gray-300">• TailwindCSS (styling)</li>
+                          <li className="text-sm text-gray-600 dark:text-gray-300">• ESLint (code quality)</li>
+                          <li className="text-sm text-gray-600 dark:text-gray-300">• Jest (testing)</li>
+                        </ul>
+                      </div>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Using default dependencies
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
@@ -384,12 +451,39 @@ const ProjectPlanReview = ({
                   Key Features
                 </h4>
                 <ul className="space-y-3">
-                  {plan.features?.map((feature, i) => (
-                    <li key={i} className="flex items-start">
-                      <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
-                      <span className="text-gray-700 dark:text-gray-300">{feature}</span>
-                    </li>
-                  ))}
+                  {plan.features && plan.features.length > 0 ? (
+                    plan.features.map((feature, i) => (
+                      <li key={i} className="flex items-start">
+                        <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">{feature}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <>
+                      <li className="flex items-start">
+                        <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">Modern & Responsive Design</span>
+                      </li>
+                      <li className="flex items-start">
+                        <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">Clean Code Architecture</span>
+                      </li>
+                      <li className="flex items-start">
+                        <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">Performance Optimized</span>
+                      </li>
+                      <li className="flex items-start">
+                        <FiCheck className="text-green-500 mt-1 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">Easy to Customize</span>
+                      </li>
+                      <li className="flex items-start mt-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-1 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-xs text-amber-600 dark:text-amber-400">Using default features</span>
+                      </li>
+                    </>
+                  )}
                 </ul>
               </div>
             )}

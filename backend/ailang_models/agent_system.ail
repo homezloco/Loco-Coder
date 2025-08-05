@@ -1,0 +1,142 @@
+"""
+Agent System Definition in AILang
+Defines agents, consensus strategies, and tasks for the multi-agent orchestration system
+"""
+
+# Agent role definitions
+enum AgentRole {
+  CODE_WRITER
+  CODE_REVIEWER
+  ARCHITECT
+  SECURITY_EXPERT
+  PERFORMANCE_EXPERT
+  DOCUMENTATION_WRITER
+}
+
+# Define agent configurations
+agent CodeWriter {
+  name: "Code Writer"
+  role: AgentRole.CODE_WRITER
+  api_url: "https://api.openai.com/v1/chat/completions"
+  api_key: env("OPENAI_API_KEY")
+  backup_api_url: "http://localhost:11434/api/generate"
+  weight: 1.0
+  timeout: 30.0
+  
+  parameters {
+    model: "gpt-4"
+    temperature: 0.7
+    max_tokens: 2048
+    top_p: 0.95
+  }
+  
+  fallback {
+    local_model: "codellama:7b-instruct"
+    timeout: 60.0
+  }
+}
+
+agent CodeReviewer {
+  name: "Code Reviewer"
+  role: AgentRole.CODE_REVIEWER
+  api_url: "https://api.openai.com/v1/chat/completions"
+  api_key: env("OPENAI_API_KEY")
+  backup_api_url: "http://localhost:11434/api/generate"
+  weight: 1.2
+  timeout: 30.0
+  
+  parameters {
+    model: "gpt-4"
+    temperature: 0.5
+    max_tokens: 2048
+    top_p: 0.9
+  }
+  
+  fallback {
+    local_model: "codellama:7b-instruct"
+    timeout: 60.0
+  }
+}
+
+agent SecurityExpert {
+  name: "Security Expert"
+  role: AgentRole.SECURITY_EXPERT
+  api_url: "https://api.openai.com/v1/chat/completions"
+  api_key: env("OPENAI_API_KEY")
+  backup_api_url: "http://localhost:11434/api/generate"
+  weight: 1.5
+  timeout: 30.0
+  
+  parameters {
+    model: "gpt-4"
+    temperature: 0.3
+    max_tokens: 2048
+    top_p: 0.9
+  }
+  
+  fallback {
+    local_model: "codellama:7b-instruct"
+    timeout: 60.0
+  }
+}
+
+# Define consensus strategies
+consensus MajorityVote {
+  strategy: "majority_vote"
+  threshold: 0.5
+  timeout: 30.0
+  retry_count: 2
+}
+
+consensus WeightedVote {
+  strategy: "weighted_vote"
+  threshold: 0.6
+  timeout: 45.0
+  retry_count: 3
+}
+
+consensus PrimaryWithVeto {
+  strategy: "primary_with_veto"
+  primary_role: AgentRole.SECURITY_EXPERT
+  timeout: 60.0
+  retry_count: 1
+}
+
+# Define task templates
+task CodeReview {
+  description: "Review code for quality and best practices"
+  agents: [CodeWriter, CodeReviewer]
+  consensus: MajorityVote
+  
+  context_template {
+    code_snippet: required
+    language: required
+    focus_areas: optional
+  }
+}
+
+task SecurityAudit {
+  description: "Audit code for security vulnerabilities"
+  agents: [CodeReviewer, SecurityExpert]
+  consensus: PrimaryWithVeto
+  
+  context_template {
+    code_snippet: required
+    language: required
+    security_focus: optional
+    compliance_requirements: optional
+  }
+}
+
+# System configuration
+system AgentOrchestrator {
+  max_concurrent_tasks: 5
+  default_consensus: MajorityVote
+  logging_level: "info"
+  
+  error_handling {
+    max_retries: 3
+    retry_delay: 2.0
+    backoff_factor: 2.0
+  }
+}

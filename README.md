@@ -230,3 +230,360 @@ DB_POOL_MAX=10
 # Database fault tolerance settings
 DB_MAX_RETRIES=3
 DB_RETRY_DELAY=0.5
+
+```
+
+## AILang Adapter System
+
+A comprehensive system for integrating, monitoring, and automatically updating the AILang domain-specific language adapter within a Python/FastAPI backend and React frontend multi-agent orchestration system.
+
+## Overview
+
+The AILang Adapter System provides tools to maintain compatibility between your application and the evolving AILang domain-specific language. It consists of several components:
+
+### Backend Components
+
+1. **AILang Python Adapter**: Interprets AILang model definitions for use in Python applications
+2. **AILang Monitoring Script**: Monitors the AILang GitHub repository for changes
+3. **AILang Adapter Updater**: Automatically updates the adapter based on detected changes
+4. **AILang Auto Update Integration**: Combines monitoring and updating for seamless automation
+
+### Frontend Components
+
+1. **AILang JavaScript Adapter**: Interprets AILang model definitions for use in React applications
+2. **AILang React Components**: UI components for visualizing and interacting with AILang models
+3. **AILang Dashboard**: Web interface for monitoring adapter status and logs
+
+### Deployment Options
+
+1. **Linux Service**: Systemd service for continuous background operation
+2. **Windows Scripts**: Batch and PowerShell scripts for Windows environments
+3. **Docker Containers**: Containerized deployment for consistent operation across platforms
+
+## Installation
+
+### Backend Installation
+
+1. Clone this repository:
+   ```bash
+   git clone <repository-url>
+   cd <repository-directory>
+   ```
+
+2. Install Python dependencies:
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+### Frontend Installation
+
+1. Install Node.js dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. Build the frontend:
+   ```bash
+   npm run build
+   ```
+
+## Usage
+
+### Python Adapter Usage
+
+```python
+from backend.ailang_adapter.adapter import AILangAdapter
+
+# Initialize the adapter
+adapter = AILangAdapter()
+
+# Load an AILang model definition
+model = adapter.load_model("path/to/model.ailang")
+
+# Execute a task defined in the model
+result = model.execute_task("task_name", {
+    "input_param": "value"
+})
+
+print(result)
+```
+
+### JavaScript Adapter Usage
+
+```javascript
+import { AILangAdapter } from './ailang_adapter';
+
+// Initialize the adapter
+const adapter = new AILangAdapter();
+
+// Load an AILang model definition
+adapter.loadModel('path/to/model.ailang')
+  .then(model => {
+    // Execute a task defined in the model
+    return model.executeTask('task_name', {
+      inputParam: 'value'
+    });
+  })
+  .then(result => {
+    console.log(result);
+  })
+  .catch(error => {
+    console.error('Error:', error);
+  });
+```
+
+## Monitoring and Auto-Update
+
+### Linux Service
+
+1. Install the systemd service:
+   ```bash
+   sudo cp backend/tools/ailang-auto-update.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+2. Start the service:
+   ```bash
+   sudo systemctl start ailang-auto-update
+   sudo systemctl enable ailang-auto-update
+   ```
+
+3. Check service status:
+   ```bash
+   sudo systemctl status ailang-auto-update
+   ```
+
+### Windows Scripts
+
+#### Using Batch Script
+
+1. Run the batch script manually:
+   ```cmd
+   cd backend\tools
+   ailang_auto_update.bat
+   ```
+
+2. Set up a scheduled task:
+   ```cmd
+   schtasks /create /tn "AILang Auto Update" /tr "C:\path\to\ailang_auto_update.bat" /sc daily /st 03:00
+   ```
+
+#### Using PowerShell Script
+
+1. Run the script once:
+   ```powershell
+   .\ailang_auto_update.ps1 -RunOnce
+   ```
+
+2. Install as a Windows service:
+   ```powershell
+   .\ailang_auto_update.ps1 -Install
+   ```
+
+3. Start the service:
+   ```powershell
+   .\ailang_auto_update.ps1 -Start
+   ```
+
+4. Check service status:
+   ```powershell
+   .\ailang_auto_update.ps1 -Status
+   ```
+
+### Docker Deployment
+
+1. Build and start the containers:
+   ```bash
+   docker-compose -f docker-compose.ailang.yml up -d
+   ```
+
+2. Check container logs:
+   ```bash
+   docker-compose -f docker-compose.ailang.yml logs -f
+   ```
+
+3. Access the dashboard:
+   ```
+   http://localhost:8080
+   ```
+
+## Configuration
+
+The auto-update system can be configured using a JSON configuration file. By default, it looks for `backend/config/ailang_config.json`:
+
+```json
+{
+  "github": {
+    "repo_owner": "ailang-org",
+    "repo_name": "ailang",
+    "token": "your_github_token"
+  },
+  "update_policy": {
+    "update_on_minor_changes": true,
+    "update_on_major_changes": true,
+    "update_on_releases": true
+  },
+  "notifications": {
+    "email": {
+      "enabled": true,
+      "recipient": "your_email@example.com",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_username": "your_username",
+      "smtp_password": "your_password"
+    },
+    "slack": {
+      "enabled": true,
+      "webhook_url": "your_slack_webhook_url"
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "backend/logs/ailang_auto_update.log"
+  },
+  "check_interval": 86400
+}
+```
+
+## Example AILang Model Definition
+
+```
+// Example AILang model for agent orchestration
+model AgentOrchestrator {
+  // Define agent types
+  agent ResearchAgent {
+    capabilities: ["web_search", "document_analysis", "information_extraction"];
+    provider: "openai";
+    model: "gpt-4";
+  }
+  
+  agent CodingAgent {
+    capabilities: ["code_generation", "code_review", "debugging"];
+    provider: "openai";
+    model: "gpt-4";
+    fallback_provider: "anthropic";
+    fallback_model: "claude-2";
+  }
+  
+  // Define tasks
+  task research_topic {
+    input: {
+      topic: string,
+      depth: number = 3
+    };
+    agent: ResearchAgent;
+    steps: [
+      "Search for information about {topic}",
+      "Analyze top {depth} results",
+      "Extract key insights"
+    ];
+    output: {
+      insights: array,
+      sources: array
+    };
+  }
+  
+  task generate_code {
+    input: {
+      language: string,
+      requirements: string,
+      tests: boolean = true
+    };
+    agent: CodingAgent;
+    steps: [
+      "Analyze requirements",
+      "Generate code in {language}",
+      "If {tests}, generate unit tests"
+    ];
+    output: {
+      code: string,
+      tests: string,
+      explanation: string
+    };
+  }
+  
+  // Define workflow
+  workflow build_project {
+    input: {
+      project_name: string,
+      description: string
+    };
+    steps: [
+      {
+        task: research_topic,
+        input: {
+          topic: "{description}",
+          depth: 5
+        },
+        output: "research_results"
+      },
+      {
+        task: generate_code,
+        input: {
+          language: "python",
+          requirements: "{description}\nResearch insights: {research_results.insights}",
+          tests: true
+        },
+        output: "implementation"
+      }
+    ];
+    output: {
+      project_name: "{project_name}",
+      research: "{research_results}",
+      implementation: "{implementation}"
+    };
+  }
+}
+```
+
+## Development
+
+### Adding New Features to the Adapter
+
+1. Fork the repository
+2. Create a feature branch
+3. Implement your changes
+4. Add tests for your changes
+5. Submit a pull request
+
+### Running Tests
+
+```bash
+# Backend tests
+cd backend
+pytest tests/
+
+# Frontend tests
+cd frontend
+npm test
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Adapter fails to update**
+   - Check the logs in `backend/logs/ailang_auto_update.log`
+   - Verify GitHub API access and token validity
+   - Ensure the adapter has write permissions to its directory
+
+2. **Service fails to start**
+   - Check system logs: `journalctl -u ailang-auto-update`
+   - Verify Python environment and dependencies
+   - Check file permissions
+
+3. **Dashboard not showing data**
+   - Verify the backend service is running
+   - Check browser console for errors
+   - Ensure API endpoints are accessible
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- AILang project contributors
+- OpenAI for API integration
+- The open-source community for various tools and libraries used in this project

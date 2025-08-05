@@ -1,0 +1,354 @@
+name: AILang Adapter CD
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+    paths:
+      - 'backend/ailang_adapter/**'
+      - 'backend/tools/**'
+      - 'frontend/src/ailang/**'
+      - 'Dockerfile.ailang'
+      - 'Dockerfile.dashboard'
+      - '.github/workflows/ailang-adapter-cd.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      force_deploy:
+        description: 'Force deployment'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  ADAPTER_IMAGE_NAME: ${{ github.repository }}/ailang-adapter
+  DASHBOARD_IMAGE_NAME: ${{ github.repository }}/ailang-dashboard
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Log in to the Container registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata (tags, labels) for adapter
+      id: meta-adapter
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.ADAPTER_IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=ref,event=branch
+          type=sha,format=short
+    
+    - name: Extract metadata (tags, labels) for dashboard
+      id: meta-dashboard
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.DASHBOARD_IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=ref,event=branch
+          type=sha,format=short
+    
+    - name: Build and push adapter image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.ailang
+        push: true
+        tags: ${{ steps.meta-adapter.outputs.tags }}
+        labels: ${{ steps.meta-adapter.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build and push dashboard image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.dashboard
+        push: true
+        tags: ${{ steps.meta-dashboard.outputs.tags }}
+        labels: ${{ steps.meta-dashboard.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Generate deployment manifests
+      run: |
+        mkdir -p deployment
+        
+        # Create deployment manifest for adapter
+        cat > deployment/adapter-deployment.yaml << EOF
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ailang-adapter
+          labels:
+            app: ailang-adapter
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ailang-adapter
+          template:
+            metadata:
+              labels:
+                app: ailang-adapter
+            spec:
+              containers:
+              - name: ailang-adapter
+                image: ${{ env.REGISTRY }}/${{ env.ADAPTER_IMAGE_NAME }}:${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
+                command: ["service"]
+                env:
+                - name: LOG_LEVEL
+                  value: "INFO"
+                - name: CHECK_INTERVAL
+                  value: "86400"
+                volumeMounts:
+                - name: config
+                  mountPath: /app/backend/config
+                - name: logs
+                  mountPath: /app/backend/logs
+              volumes:
+              - name: config
+                configMap:
+                  name: ailang-config
+              - name: logs
+                emptyDir: {}
+        EOF
+        
+        # Create deployment manifest for dashboard
+        cat > deployment/dashboard-deployment.yaml << EOF
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ailang-dashboard
+          labels:
+            app: ailang-dashboard
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ailang-dashboard
+          template:
+            metadata:
+              labels:
+                app: ailang-dashboard
+            spec:
+              containers:
+              - name: ailang-dashboard
+                image: ${{ env.REGISTRY }}/${{ env.DASHBOARD_IMAGE_NAME }}:${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
+                ports:
+                - containerPort: 80
+                livenessProbe:
+                  httpGet:
+                    path: /
+                    port: 80
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 80
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+        EOF
+        
+        # Create service manifest for dashboard
+        cat > deployment/dashboard-service.yaml << EOF
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ailang-dashboard
+        spec:
+          selector:
+            app: ailang-dashboard
+          ports:
+          - port: 80
+            targetPort: 80
+          type: ClusterIP
+        EOF
+        
+        # Create ingress manifest for dashboard
+        cat > deployment/dashboard-ingress.yaml << EOF
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: ailang-dashboard
+          annotations:
+            nginx.ingress.kubernetes.io/rewrite-target: /
+        spec:
+          rules:
+          - host: ailang-dashboard.${{ github.event.inputs.environment || 'staging' }}.example.com
+            http:
+              paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: ailang-dashboard
+                    port:
+                      number: 80
+        EOF
+    
+    - name: Upload deployment manifests
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-manifests
+        path: deployment/
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+    - name: Download deployment manifests
+      uses: actions/download-artifact@v3
+      with:
+        name: deployment-manifests
+        path: deployment/
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Set Kubernetes context
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+        context: staging-context
+    
+    - name: Create ConfigMap
+      run: |
+        kubectl create configmap ailang-config --from-literal=ailang_config.json='{
+          "github": {
+            "repo_owner": "ailang-org",
+            "repo_name": "ailang",
+            "token": "${{ secrets.GITHUB_TOKEN }}"
+          },
+          "update_policy": {
+            "update_on_minor_changes": true,
+            "update_on_major_changes": false,
+            "update_on_releases": true
+          },
+          "notifications": {
+            "email": {
+              "enabled": true,
+              "recipient": "${{ secrets.NOTIFICATION_EMAIL }}",
+              "smtp_server": "${{ secrets.SMTP_SERVER }}",
+              "smtp_port": 587,
+              "smtp_username": "${{ secrets.SMTP_USERNAME }}",
+              "smtp_password": "${{ secrets.SMTP_PASSWORD }}"
+            },
+            "slack": {
+              "enabled": true,
+              "webhook_url": "${{ secrets.SLACK_WEBHOOK_URL }}"
+            }
+          },
+          "logging": {
+            "level": "INFO",
+            "file": "/app/backend/logs/ailang_auto_update.log"
+          },
+          "check_interval": 86400
+        }' --dry-run=client -o yaml | kubectl apply -f -
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f deployment/
+    
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/ailang-adapter
+        kubectl rollout status deployment/ailang-dashboard
+
+  deploy-production:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    
+    steps:
+    - name: Download deployment manifests
+      uses: actions/download-artifact@v3
+      with:
+        name: deployment-manifests
+        path: deployment/
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Set Kubernetes context
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+        context: production-context
+    
+    - name: Create ConfigMap
+      run: |
+        kubectl create configmap ailang-config --from-literal=ailang_config.json='{
+          "github": {
+            "repo_owner": "ailang-org",
+            "repo_name": "ailang",
+            "token": "${{ secrets.GITHUB_TOKEN }}"
+          },
+          "update_policy": {
+            "update_on_minor_changes": false,
+            "update_on_major_changes": false,
+            "update_on_releases": true
+          },
+          "notifications": {
+            "email": {
+              "enabled": true,
+              "recipient": "${{ secrets.NOTIFICATION_EMAIL }}",
+              "smtp_server": "${{ secrets.SMTP_SERVER }}",
+              "smtp_port": 587,
+              "smtp_username": "${{ secrets.SMTP_USERNAME }}",
+              "smtp_password": "${{ secrets.SMTP_PASSWORD }}"
+            },
+            "slack": {
+              "enabled": true,
+              "webhook_url": "${{ secrets.SLACK_WEBHOOK_URL }}"
+            }
+          },
+          "logging": {
+            "level": "INFO",
+            "file": "/app/backend/logs/ailang_auto_update.log"
+          },
+          "check_interval": 86400
+        }' --dry-run=client -o yaml | kubectl apply -f -
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f deployment/
+    
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/ailang-adapter
+        kubectl rollout status deployment/ailang-dashboard

@@ -95,6 +95,15 @@ const AppContainer = () => {
                           </ProtectedRoute>
                         } 
                       />
+                      {/* Add dedicated project route that redirects to WritePage */}
+                      <Route 
+                        path="/project/:projectId" 
+                        element={
+                          <ProtectedRoute>
+                            <WritePage />
+                          </ProtectedRoute>
+                        } 
+                      />
                       <Route path="/register" element={<Register />} />
                       <Route path="/*" element={<AppWithTheme />} />
                     </Routes>

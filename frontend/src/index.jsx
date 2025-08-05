@@ -1,55 +1,78 @@
-console.log('Script starting...');
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import AILangDashboard from './components/AILangDashboard';
 
-// Simple test to check if React is loaded
-if (!window.React) {
-  console.error('React is not loaded!');
-  document.body.innerHTML = `
-    <h1 style="color: red">Error: React not loaded</h1>
-    <p>Check the browser console for more details.</p>
-  `;
-} else {
-  console.log('React is available:', window.React.version);
-  
-  // Create a simple component
-  const App = () => {
-    console.log('Rendering App component');
-    return React.createElement('div', { 
-      style: { 
-        padding: '20px', 
-        fontFamily: 'Arial, sans-serif' 
-      }
-    }, [
-      React.createElement('h1', { key: 'h1' }, 'Hello from React!'),
-      React.createElement('p', { key: 'p1' }, 'If you see this, React is working!'),
-      React.createElement('p', { key: 'p2' }, 'Check the console for more details.')
-    ]);
-  };
-  
-  // Render the app
-  try {
-    const rootElement = document.getElementById('root');
-    if (!rootElement) {
-      throw new Error('Root element not found');
-    }
-    
-    console.log('Creating root...');
-    const root = window.ReactDOM.createRoot(rootElement);
-    
-    console.log('Rendering...');
-    root.render(
-      window.React.createElement(window.React.StrictMode, null,
-        window.React.createElement(App)
-      )
-    );
-    
-    console.log('Render complete');
-    
-  } catch (error) {
-    console.error('Error:', error);
-    document.body.innerHTML = `
-      <h1 style="color: red">Error</h1>
-      <p>${error.message}</p>
-      <pre>${error.stack}</pre>
-    `;
-  }
-}
+// Create a theme instance
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+    background: {
+      default: '#f5f5f5',
+    },
+  },
+  typography: {
+    fontFamily: [
+      '-apple-system',
+      'BlinkMacSystemFont',
+      '"Segoe UI"',
+      'Roboto',
+      '"Helvetica Neue"',
+      'Arial',
+      'sans-serif',
+      '"Apple Color Emoji"',
+      '"Segoe UI Emoji"',
+      '"Segoe UI Symbol"',
+    ].join(','),
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          scrollbarWidth: 'thin',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+            height: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: '#f5f5f5',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: '#bdbdbd',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            backgroundColor: '#9e9e9e',
+          },
+        },
+      },
+    },
+  },
+});
+
+/**
+ * Main entry point for the AILang Adapter Dashboard application
+ */
+const App = () => {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AILangDashboard />
+    </ThemeProvider>
+  );
+};
+
+// Create root and render app
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+export default App;

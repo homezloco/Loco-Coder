@@ -269,9 +269,45 @@ export const ProjectProvider = ({ children }) => {
         }
       }
       
-      // If not authenticated, don't try to load from API
+      // If not authenticated, try to load from local storage directly
       if (!isAuthenticated) {
-        console.log('[ProjectContext] Not authenticated, skipping project load');
+        console.log('[ProjectContext] Not authenticated, loading from local storage only');
+        
+        try {
+          // Try to load projects from localStorage directly
+          const projectsIndex = localStorage.getItem('projects_index');
+          if (projectsIndex) {
+            const parsedIndex = JSON.parse(projectsIndex);
+            if (Array.isArray(parsedIndex) && parsedIndex.length > 0) {
+              console.log(`[ProjectContext] Found ${parsedIndex.length} projects in local storage index`);
+              
+              // Load each project from localStorage
+              const localProjects = [];
+              for (const projectInfo of parsedIndex) {
+                try {
+                  const projectKey = `p_${projectInfo.id}`;
+                  const projectData = localStorage.getItem(projectKey);
+                  if (projectData) {
+                    const project = JSON.parse(projectData);
+                    localProjects.push(project);
+                  }
+                } catch (e) {
+                  console.warn(`[ProjectContext] Failed to load project ${projectInfo.id}:`, e);
+                }
+              }
+              
+              if (localProjects.length > 0) {
+                console.log(`[ProjectContext] Loaded ${localProjects.length} projects from local storage`);
+                setProjects(localProjects);
+                setLoading(false);
+                return localProjects;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[ProjectContext] Failed to load projects from local storage:', e);
+        }
+        
         setProjects([]);
         setLoading(false);
         return [];
@@ -338,7 +374,49 @@ export const ProjectProvider = ({ children }) => {
   const loadProjects = useCallback(
     throttle(async () => {
       if (!isAuthenticated) {
-        console.log('[ProjectContext] Not authenticated, skipping project load');
+        console.log('[ProjectContext] Not authenticated, trying local storage fallback');
+        // Try to load projects from local storage
+        const cachedProjects = loadProjectsFromStorage();
+        if (cachedProjects && cachedProjects.length > 0) {
+          console.log(`[ProjectContext] Loaded ${cachedProjects.length} projects from local storage`);
+          setProjects(cachedProjects);
+          return cachedProjects;
+        }
+        
+        // If no cached projects, try direct localStorage access
+        try {
+          const projectsIndex = localStorage.getItem('projects_index');
+          if (projectsIndex) {
+            const parsedIndex = JSON.parse(projectsIndex);
+            if (Array.isArray(parsedIndex) && parsedIndex.length > 0) {
+              console.log(`[ProjectContext] Found ${parsedIndex.length} projects in local storage index`);
+              
+              // Load each project from localStorage
+              const localProjects = [];
+              for (const projectInfo of parsedIndex) {
+                try {
+                  const projectKey = `p_${projectInfo.id}`;
+                  const projectData = localStorage.getItem(projectKey);
+                  if (projectData) {
+                    const project = JSON.parse(projectData);
+                    localProjects.push(project);
+                  }
+                } catch (e) {
+                  console.warn(`[ProjectContext] Failed to load project ${projectInfo.id}:`, e);
+                }
+              }
+              
+              if (localProjects.length > 0) {
+                console.log(`[ProjectContext] Loaded ${localProjects.length} projects from local storage`);
+                setProjects(localProjects);
+                return localProjects;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[ProjectContext] Failed to load projects from local storage:', e);
+        }
+        
         return [];
       }
       
@@ -347,8 +425,15 @@ export const ProjectProvider = ({ children }) => {
       
       return loadProjectsRetryRaw();
     }, 2000),
-    [isAuthenticated, loadProjectsRetryRaw]
+    [isAuthenticated, loadProjectsRetryRaw, loadProjectsFromStorage]
   );
+
+  // Add effect to load projects when authentication state changes
+  useEffect(() => {
+    console.log('[ProjectContext] Authentication state changed, isAuthenticated:', isAuthenticated);
+    // Always try to load projects, our loadProjects function now handles both authenticated and unauthenticated states
+    loadProjects();
+  }, [isAuthenticated, loadProjects]);
 
   // Load a single project
   const loadProject = useCallback(async (projectId) => {
@@ -403,7 +488,7 @@ export const ProjectProvider = ({ children }) => {
         } catch (storageError) {
           console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
           // If we hit storage quota, clean up
-          cleanupOldProjects(1);
+          cleanupOldProjects(1); // More aggressive cleanup
         }
         
         return project;
@@ -463,7 +548,7 @@ export const ProjectProvider = ({ children }) => {
         } catch (storageError) {
           console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
           // If we hit storage quota, clean up
-          cleanupOldProjects(1);
+          cleanupOldProjects(1); // More aggressive cleanup
         }
         
         showSuccessToast('Project created successfully');
@@ -588,13 +673,6 @@ export const ProjectProvider = ({ children }) => {
       setLoading(false);
     }
   }, [currentProject?.id, isAuthenticated, navigate, showErrorToast, showSuccessToast, api.projects]);
-
-  // Load projects when component mounts
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadProjects();
-    }
-  }, [isAuthenticated, loadProjects]);
 
   // Context value
   const contextValue = {

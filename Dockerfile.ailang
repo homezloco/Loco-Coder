@@ -1,0 +1,48 @@
+# AILang Adapter System Dockerfile
+# This Dockerfile creates a container for running the AILang adapter system
+
+FROM python:3.9-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY backend/requirements.txt /app/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code
+COPY backend /app/backend
+
+# Create logs directory
+RUN mkdir -p /app/backend/logs
+
+# Set up a volume for logs
+VOLUME /app/backend/logs
+
+# Set up a volume for configuration
+VOLUME /app/backend/config
+
+# Expose port for API (if needed)
+EXPOSE 8000
+
+# Set the entrypoint script
+COPY backend/tools/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Default command (can be overridden)
+CMD ["monitor"]
