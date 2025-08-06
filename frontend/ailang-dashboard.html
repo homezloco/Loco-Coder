@@ -131,7 +131,7 @@
 
   <script>
     // API base URL - pointing directly to our standalone AILang API server
-    const API_BASE_URL = 'http://localhost:8002';
+    const API_BASE_URL = 'http://localhost:8001';
     
     // Dashboard state
     let health = null;
@@ -164,7 +164,7 @@
         renderDashboard();
       } catch (err) {
         console.error('Error fetching data:', err);
-        error = `Failed to connect to the AILang API server. Make sure it is running on port 8002.`;
+        error = `Failed to connect to the AILang API server. Make sure it is running on port 8001.`;
         loading = false;
         renderDashboard();
       }
