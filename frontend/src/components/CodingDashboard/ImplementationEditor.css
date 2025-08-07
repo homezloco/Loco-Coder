@@ -1,0 +1,294 @@
+/* ImplementationEditor.css */
+.implementation-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.implementation-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.dark-mode .implementation-toolbar {
+  background-color: #2d3748;
+  border-bottom: 1px solid #4a5568;
+}
+
+.implementation-toolbar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.implementation-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.generate-button {
+  background-color: #4299e1;
+  color: white;
+}
+
+.generate-button:hover:not(:disabled) {
+  background-color: #3182ce;
+}
+
+.download-button {
+  background-color: #48bb78;
+  color: white;
+}
+
+.download-button:hover:not(:disabled) {
+  background-color: #38a169;
+}
+
+.copy-button {
+  background-color: #ed8936;
+  color: white;
+}
+
+.copy-button:hover:not(:disabled) {
+  background-color: #dd6b20;
+}
+
+.settings-button {
+  background-color: #a0aec0;
+  color: white;
+}
+
+.settings-button:hover:not(:disabled) {
+  background-color: #718096;
+}
+
+.settings-panel {
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.dark-mode .settings-panel {
+  background-color: #1a202c;
+  border-bottom: 1px solid #4a5568;
+}
+
+.tech-stack-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.tech-stack-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.error-message {
+  margin: 12px;
+  padding: 12px;
+  background-color: #fed7d7;
+  border-left: 4px solid #e53e3e;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dark-mode .error-message {
+  background-color: #742a2a;
+  border-left: 4px solid #f56565;
+  color: white;
+}
+
+.error-message p {
+  margin: 0;
+}
+
+.error-message button {
+  background: none;
+  border: none;
+  color: #e53e3e;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+.dark-mode .error-message button {
+  color: #feb2b2;
+}
+
+.implementation-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #718096;
+  text-align: center;
+  padding: 24px;
+}
+
+.dark-mode .empty-state {
+  color: #a0aec0;
+}
+
+.empty-state h3 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  max-width: 400px;
+}
+
+.file-explorer {
+  width: 250px;
+  border-right: 1px solid #e0e0e0;
+  overflow-y: auto;
+  background-color: #f5f5f5;
+}
+
+.dark-mode .file-explorer {
+  background-color: #2d3748;
+  border-right: 1px solid #4a5568;
+}
+
+.file-explorer h3 {
+  padding: 12px;
+  margin: 0;
+  font-size: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.dark-mode .file-explorer h3 {
+  border-bottom: 1px solid #4a5568;
+}
+
+.file-explorer ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-explorer li {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #edf2f7;
+  transition: background-color 0.2s ease;
+}
+
+.dark-mode .file-explorer li {
+  border-bottom: 1px solid #2d3748;
+}
+
+.file-explorer li:hover {
+  background-color: #edf2f7;
+}
+
+.dark-mode .file-explorer li:hover {
+  background-color: #4a5568;
+}
+
+.file-explorer li.selected {
+  background-color: #e2e8f0;
+  font-weight: 500;
+}
+
+.dark-mode .file-explorer li.selected {
+  background-color: #4a5568;
+}
+
+.code-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.code-header {
+  padding: 8px 12px;
+  background-color: #edf2f7;
+  border-bottom: 1px solid #e0e0e0;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.dark-mode .code-header {
+  background-color: #2d3748;
+  border-bottom: 1px solid #4a5568;
+}
+
+.code-content {
+  flex: 1;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  background-color: #f8fafc;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.dark-mode .code-content {
+  background-color: #1a202c;
+  color: #e2e8f0;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dark-mode .loading-overlay {
+  background-color: rgba(26, 32, 44, 0.7);
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #4299e1;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

@@ -82,7 +82,7 @@ const UserProfilePanel = ({
   const [organizations, setOrganizations] = useState([
     // Placeholder data
     { name: 'Personal', role: 'Owner' },
-    { name: 'Windsurf AI', role: 'Member' }
+    { name: 'CodeCraft AI', role: 'Member' }
   ]);
   
   const userPrefs = (() => {

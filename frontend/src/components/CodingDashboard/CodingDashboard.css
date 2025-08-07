@@ -1,0 +1,388 @@
+/* CodingDashboard.css */
+
+/* Main container and overlay */
+.coding-dashboard-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.coding-dashboard-overlay.dark {
+  background-color: rgba(17, 24, 39, 0.95);
+  color: #e5e7eb;
+}
+
+.coding-dashboard-container {
+  width: 90%;
+  max-width: 1200px;
+  height: 90%;
+  max-height: 800px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dark .coding-dashboard-container {
+  background-color: #1f2937;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Header */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dark .dashboard-header {
+  border-bottom: 1px solid #374151;
+}
+
+.dashboard-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: #111827;
+}
+
+.dark .dashboard-header h1 {
+  color: #f3f4f6;
+}
+
+.close-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #6b7280;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.dark .close-button {
+  color: #9ca3af;
+}
+
+.dark .close-button:hover {
+  background-color: #374151;
+  color: #f3f4f6;
+}
+
+/* Step navigation */
+.step-navigation {
+  display: flex;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.dark .step-navigation {
+  border-bottom: 1px solid #374151;
+}
+
+.step-button {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  margin-right: 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: background-color 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.step-button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.step-button.active {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.step-button.completed {
+  color: #10b981;
+}
+
+.dark .step-button:hover {
+  background-color: #374151;
+  color: #f3f4f6;
+}
+
+.dark .step-button.active {
+  background-color: #075985;
+  color: #e0f2fe;
+}
+
+.dark .step-button.completed {
+  color: #34d399;
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+}
+
+.step-label {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.step-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.step-description {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .step-description {
+    display: block;
+  }
+}
+
+/* Main content area */
+.step-content-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  transition: opacity 0.3s;
+}
+
+.step-content-container.transitioning {
+  opacity: 0.5;
+}
+
+.step-content h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+.dark .step-content h2 {
+  color: #f3f4f6;
+}
+
+/* Loading and error states */
+.loading-container,
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(59, 130, 246, 0.2);
+  border-radius: 50%;
+  border-top-color: #3b82f6;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.retry-button {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.dark .retry-button {
+  background-color: #2563eb;
+}
+
+/* Footer */
+.dashboard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dark .dashboard-footer {
+  border-top: 1px solid #374151;
+}
+
+.api-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.dark .api-status {
+  color: #9ca3af;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: #9ca3af;
+}
+
+.status-indicator.healthy {
+  background-color: #10b981;
+}
+
+.status-indicator.unhealthy {
+  background-color: #ef4444;
+}
+
+.navigation-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.back-button,
+.next-button,
+.finish-button {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.back-button {
+  background-color: transparent;
+  border: 1px solid #d1d5db;
+  color: #6b7280;
+}
+
+.back-button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.next-button,
+.finish-button {
+  background-color: #3b82f6;
+  border: none;
+  color: white;
+}
+
+.next-button:hover,
+.finish-button:hover {
+  background-color: #2563eb;
+}
+
+.dark .back-button {
+  border: 1px solid #4b5563;
+  color: #9ca3af;
+}
+
+.dark .back-button:hover {
+  background-color: #374151;
+  color: #f3f4f6;
+}
+
+.dark .next-button,
+.dark .finish-button {
+  background-color: #2563eb;
+}
+
+.dark .next-button:hover,
+.dark .finish-button:hover {
+  background-color: #1d4ed8;
+}
+
+.back-button:disabled,
+.next-button:disabled,
+.finish-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Step-specific styles */
+.requirements-step,
+.erd-step,
+.api-design-step,
+.test-step,
+.implementation-step {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .coding-dashboard-container {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+  
+  .step-navigation {
+    padding: 12px;
+  }
+  
+  .step-button {
+    padding: 6px 12px;
+  }
+  
+  .dashboard-header,
+  .dashboard-footer,
+  .step-content-container {
+    padding: 16px;
+  }
+}

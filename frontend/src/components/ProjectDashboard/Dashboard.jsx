@@ -20,6 +20,8 @@ import ErrorState from './ErrorState';
 import EmptyState from './EmptyState';
 import SyncIndicator from './SyncIndicator';
 import ProjectCreationModal from '../ProjectCreationModal';
+import CodingDashboard from '../CodingDashboard';
+import { FiCode } from 'react-icons/fi';
 
 // Modal for delete confirmation
 const DeleteConfirmationModal = ({ project, onDelete, onCancel, isDarkMode }) => (
@@ -99,6 +101,7 @@ const Dashboard = ({
   const [useVirtualization, setUseVirtualization] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isCodingDashboardOpen, setIsCodingDashboardOpen] = useState(false);
   const containerRef = useRef(null);
   const [containerHeight, setContainerHeight] = useState(800);
   
@@ -650,6 +653,9 @@ const Dashboard = ({
       return { success: false, error: errorMsg };
     }
     
+    // Show loading indicator
+    setIsLoading(true);
+    
     // Handle template-based creation (legacy)
     if (typeof projectData === 'string') {
       const templateId = projectData;
@@ -1157,29 +1163,53 @@ const Dashboard = ({
         }}>
           Projects
         </h1>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          style={{
-            backgroundColor: isDarkMode ? '#3d71e3' : '#4285f4',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '8px 16px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            ':hover': {
-              backgroundColor: isDarkMode ? '#4d7cff' : '#3b78e7',
-              transform: 'translateY(-1px)'
-            }
-          }}
-        >
-          <span>+</span> New Project
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => setIsCodingDashboardOpen(true)}
+            style={{
+              backgroundColor: isDarkMode ? '#2d3348' : '#f1f5f9',
+              color: isDarkMode ? '#e8ecf3' : '#4b5563',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              ':hover': {
+                backgroundColor: isDarkMode ? '#3d4663' : '#e2e8f0',
+              }
+            }}
+          >
+            <FiCode /> Coding Dashboard
+          </button>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            style={{
+              backgroundColor: isDarkMode ? '#3d71e3' : '#4285f4',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              ':hover': {
+                backgroundColor: isDarkMode ? '#4d7cff' : '#3b78e7',
+                transform: 'translateY(-1px)'
+              }
+            }}
+          >
+            <span>+</span> New Project
+          </button>
+        </div>
       </header>
 
       {/* Main content */}
@@ -1193,6 +1223,13 @@ const Dashboard = ({
         onClose={() => setIsCreateModalOpen(false)}
         onCreateProject={handleCreateProject}
         apiStatus={apiStatus}
+      />
+
+      {/* Coding Dashboard */}
+      <CodingDashboard
+        isOpen={isCodingDashboardOpen}
+        onClose={() => setIsCodingDashboardOpen(false)}
+        projectId={selectedProjectId}
       />
 
       {/* Delete Confirmation Modal */}

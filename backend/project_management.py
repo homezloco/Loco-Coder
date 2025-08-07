@@ -128,7 +128,7 @@ if pydantic_available:
         created_at: datetime.datetime
         updated_at: datetime.datetime
         is_active: bool = True
-        config: Dict[str, Any] = {}
+        config: Dict[str, Any] = Field(default_factory=dict)
         
         @classmethod
         def from_orm(cls, obj):
@@ -141,14 +141,14 @@ if pydantic_available:
             return obj
         
         class Config:
-            orm_mode = True
+            from_attributes = True  # This replaces orm_mode in Pydantic v2
             
     class ServiceBase(BaseModel):
         """Base service model"""
         name: str
         description: Optional[str] = None
         service_type: str
-        config: Dict[str, Any] = {}
+        config: Dict[str, Any] = Field(default_factory=dict)
         
         @validator("service_type")
         def validate_service_type(cls, v):
@@ -173,6 +173,7 @@ if pydantic_available:
         created_at: datetime.datetime
         updated_at: datetime.datetime
         status: str = "inactive"
+        config: Dict[str, Any] = Field(default_factory=dict)
         
         @classmethod
         def from_orm(cls, obj):
@@ -418,7 +419,7 @@ class ProjectManager:
                 # Fall back to memory storage
                 self.storage_mode = "memory"
         
-        # Memory storage (last resort)
+        # Memory storage
         project_record = {
             "id": project_id,
             "name": project_data["name"],
@@ -828,6 +829,207 @@ class ProjectManager:
         # User is owner or in the same organization
         return (project_owner_id == user_id or 
                 (organization_id and project_org_id and organization_id == project_org_id))
+
+    async def delete_project(self, project_id: str) -> bool:
+        """Delete a project and all its associated services"""
+        # Database storage (primary)
+        if self.storage_mode == "database" and database_available and sqlalchemy_available:
+            try:
+                project = self.db_session.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+                if not project:
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Delete the project (cascade will delete services)
+                self.db_session.delete(project)
+                self.db_session.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Database project deletion failed: {e}")
+                self.db_session.rollback()
+                # Fall back to file storage
+                self.storage_mode = "file"
+        
+        # File storage (fallback 1)
+        if self.storage_mode == "file":
+            try:
+                # Delete project
+                projects = []
+                try:
+                    with open(self.projects_file, "r") as f:
+                        projects = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    logger.error("Failed to read projects file")
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Find and remove the project
+                project_found = False
+                updated_projects = []
+                for project in projects:
+                    if project["id"] == project_id:
+                        project_found = True
+                    else:
+                        updated_projects.append(project)
+                
+                if not project_found:
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Save updated projects
+                with open(self.projects_file, "w") as f:
+                    json.dump(updated_projects, f, indent=2)
+                
+                # Delete associated services
+                services = []
+                try:
+                    with open(self.services_file, "r") as f:
+                        services = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    logger.error("Failed to read services file")
+                    services = []
+                
+                # Remove services for this project
+                updated_services = [s for s in services if s["project_id"] != project_id]
+                
+                # Save updated services
+                with open(self.services_file, "w") as f:
+                    json.dump(updated_services, f, indent=2)
+                
+                return True
+            except Exception as e:
+                logger.error(f"File-based project deletion failed: {e}")
+                # Fall back to memory storage
+                self.storage_mode = "memory"
+        
+        # Memory storage (last resort)
+        if project_id not in self.memory_projects:
+            raise ValueError(f"Project with ID {project_id} not found")
+        
+        # Delete project
+        del self.memory_projects[project_id]
+        
+        # Delete associated services
+        self.memory_services = {
+            service_id: service 
+            for service_id, service in self.memory_services.items() 
+            if service["project_id"] != project_id
+        }
+        
+        return True
+
+    async def update_project(self, project_id: str, project_data: Dict[str, Any]) -> Union[Project, dict]:
+        """Update an existing project"""
+        now = datetime.datetime.utcnow()
+        
+        # Database storage (primary)
+        if self.storage_mode == "database" and database_available and sqlalchemy_available:
+            try:
+                project = self.db_session.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+                if not project:
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Update fields
+                if "name" in project_data:
+                    project.name = project_data["name"]
+                if "description" in project_data:
+                    project.description = project_data["description"]
+                if "is_active" in project_data:
+                    project.is_active = project_data["is_active"]
+                if "config" in project_data:
+                    project.config = project_data["config"]
+                
+                project.updated_at = now
+                
+                self.db_session.commit()
+                
+                if pydantic_available:
+                    return Project.from_orm(project)
+                else:
+                    return {
+                        "id": project.id,
+                        "name": project.name,
+                        "description": project.description,
+                        "project_type": project.project_type,
+                        "owner_id": project.owner_id,
+                        "organization_id": project.organization_id,
+                        "created_at": project.created_at.isoformat(),
+                        "updated_at": project.updated_at.isoformat(),
+                        "is_active": project.is_active,
+                        "config": project.config
+                    }
+            except Exception as e:
+                logger.error(f"Database project update failed: {e}")
+                self.db_session.rollback()
+                # Fall back to file storage
+                self.storage_mode = "file"
+        
+        # File storage (fallback 1)
+        if self.storage_mode == "file":
+            try:
+                projects = []
+                try:
+                    with open(self.projects_file, "r") as f:
+                        projects = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    logger.error("Failed to read projects file")
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Find and update the project
+                project_found = False
+                for i, project in enumerate(projects):
+                    if project["id"] == project_id:
+                        # Update fields
+                        if "name" in project_data:
+                            project["name"] = project_data["name"]
+                        if "description" in project_data:
+                            project["description"] = project_data["description"]
+                        if "is_active" in project_data:
+                            project["is_active"] = project_data["is_active"]
+                        if "config" in project_data:
+                            project["config"] = project_data["config"]
+                        
+                        project["updated_at"] = now.isoformat()
+                        projects[i] = project
+                        project_found = True
+                        break
+                
+                if not project_found:
+                    raise ValueError(f"Project with ID {project_id} not found")
+                
+                # Save updated projects
+                with open(self.projects_file, "w") as f:
+                    json.dump(projects, f, indent=2)
+                
+                if pydantic_available:
+                    return Project(**project)
+                else:
+                    return project
+            except Exception as e:
+                logger.error(f"File-based project update failed: {e}")
+                # Fall back to memory storage
+                self.storage_mode = "memory"
+        
+        # Memory storage (last resort)
+        if project_id not in self.memory_projects:
+            raise ValueError(f"Project with ID {project_id} not found")
+        
+        project = self.memory_projects[project_id]
+        
+        # Update fields
+        if "name" in project_data:
+            project["name"] = project_data["name"]
+        if "description" in project_data:
+            project["description"] = project_data["description"]
+        if "is_active" in project_data:
+            project["is_active"] = project_data["is_active"]
+        if "config" in project_data:
+            project["config"] = project_data["config"]
+        
+        project["updated_at"] = now.isoformat()
+        self.memory_projects[project_id] = project
+        
+        if pydantic_available:
+            return Project(**project)
+        else:
+            return project
 
 # Create singleton instance
 project_manager = ProjectManager()

@@ -1,0 +1,548 @@
+/* ERDEditor.css */
+
+/* Container */
+.erd-editor-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #f8fafc;
+  position: relative;
+}
+
+.erd-editor-container.dark {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+
+/* Toolbar */
+.erd-toolbar {
+  display: flex;
+  padding: 8px 16px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 8px;
+  z-index: 10;
+}
+
+.erd-editor-container.dark .erd-toolbar {
+  background-color: #0f172a;
+  border-bottom: 1px solid #334155;
+}
+
+.erd-toolbar-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  color: #475569;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.erd-toolbar-button:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.erd-toolbar-button.active {
+  background-color: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0369a1;
+}
+
+.erd-editor-container.dark .erd-toolbar-button {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+.erd-editor-container.dark .erd-toolbar-button:hover {
+  background-color: #334155;
+  border-color: #475569;
+}
+
+.erd-editor-container.dark .erd-toolbar-button.active {
+  background-color: #0c4a6e;
+  border-color: #0284c7;
+  color: #7dd3fc;
+}
+
+/* Canvas */
+.erd-canvas {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background-color: #f8fafc;
+}
+
+.erd-canvas.grid {
+  background-image: 
+    linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+    linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.erd-editor-container.dark .erd-canvas {
+  background-color: #1e293b;
+}
+
+.erd-editor-container.dark .erd-canvas.grid {
+  background-image: 
+    linear-gradient(to right, #334155 1px, transparent 1px),
+    linear-gradient(to bottom, #334155 1px, transparent 1px);
+}
+
+.erd-relationships {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Entity */
+.erd-entity {
+  position: absolute;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  cursor: move;
+  z-index: 2;
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.erd-entity:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.erd-entity.selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.erd-editor-container.dark .erd-entity {
+  background-color: #0f172a;
+  border-color: #334155;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.erd-editor-container.dark .erd-entity:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.erd-editor-container.dark .erd-entity.selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.erd-entity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.erd-editor-container.dark .erd-entity-header {
+  background-color: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.erd-entity-header h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.erd-editor-container.dark .erd-entity-header h3 {
+  color: #e2e8f0;
+}
+
+.erd-entity-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.erd-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background-color: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.erd-icon-button:hover {
+  background-color: #e2e8f0;
+  color: #334155;
+}
+
+.erd-icon-button.delete:hover {
+  background-color: #fee2e2;
+  color: #ef4444;
+}
+
+.erd-editor-container.dark .erd-icon-button {
+  color: #94a3b8;
+}
+
+.erd-editor-container.dark .erd-icon-button:hover {
+  background-color: #334155;
+  color: #e2e8f0;
+}
+
+.erd-editor-container.dark .erd-icon-button.delete:hover {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+/* Entity Attributes */
+.erd-entity-attributes {
+  padding: 8px 0;
+}
+
+.erd-attribute {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 12px;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.erd-attribute:last-child {
+  border-bottom: none;
+}
+
+.erd-attribute.primary {
+  font-weight: 500;
+}
+
+.erd-attribute.required .erd-attribute-name::after {
+  content: '*';
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.erd-editor-container.dark .erd-attribute {
+  border-bottom: 1px solid #1e293b;
+}
+
+.erd-attribute-name {
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.erd-attribute-type {
+  color: #64748b;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.erd-editor-container.dark .erd-attribute-name {
+  color: #e2e8f0;
+}
+
+.erd-editor-container.dark .erd-attribute-type {
+  color: #94a3b8;
+}
+
+.erd-key-icon {
+  font-size: 0.75rem;
+}
+
+.delete-attr {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.erd-attribute:hover .delete-attr {
+  opacity: 1;
+}
+
+/* Add Attribute Form */
+.erd-add-attribute {
+  padding: 8px 12px;
+  background-color: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.erd-editor-container.dark .erd-add-attribute {
+  background-color: #1e293b;
+  border-top: 1px solid #334155;
+}
+
+.erd-add-attribute input[type="text"],
+.erd-add-attribute select {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  background-color: #ffffff;
+  color: #334155;
+}
+
+.erd-editor-container.dark .erd-add-attribute input[type="text"],
+.erd-editor-container.dark .erd-add-attribute select {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.erd-attribute-options {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+}
+
+.erd-attribute-options label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.erd-editor-container.dark .erd-attribute-options label {
+  color: #94a3b8;
+}
+
+.erd-attribute-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Relationships */
+.erd-relationship-line {
+  stroke: #64748b;
+  stroke-width: 1.5;
+  fill: none;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.erd-relationship.selected .erd-relationship-line {
+  stroke: #3b82f6;
+  stroke-width: 2;
+}
+
+.erd-editor-container.dark .erd-relationship-line {
+  stroke: #94a3b8;
+}
+
+.erd-editor-container.dark .erd-relationship.selected .erd-relationship-line {
+  stroke: #60a5fa;
+}
+
+.erd-temp-relationship {
+  stroke: #3b82f6;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.erd-editor-container.dark .erd-temp-relationship {
+  stroke: #60a5fa;
+}
+
+.erd-relationship-label {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.relationship-type {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  height: 100%;
+}
+
+.erd-editor-container.dark .relationship-type {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.relationship-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  height: 100%;
+}
+
+.erd-editor-container.dark .relationship-actions {
+  background-color: #0f172a;
+  border-color: #334155;
+}
+
+/* Add Entity Modal */
+.erd-add-entity-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.erd-add-entity-form {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  width: 300px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.erd-editor-container.dark .erd-add-entity-form {
+  background-color: #0f172a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.erd-add-entity-form h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 1rem;
+  color: #334155;
+}
+
+.erd-editor-container.dark .erd-add-entity-form h3 {
+  color: #e2e8f0;
+}
+
+.erd-add-entity-form input {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background-color: #ffffff;
+  color: #334155;
+}
+
+.erd-editor-container.dark .erd-add-entity-form input {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.erd-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Buttons */
+.erd-button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.erd-button.add {
+  background-color: #3b82f6;
+  border: none;
+  color: white;
+}
+
+.erd-button.add:hover {
+  background-color: #2563eb;
+}
+
+.erd-button.add:disabled {
+  background-color: #93c5fd;
+  cursor: not-allowed;
+}
+
+.erd-button.cancel {
+  background-color: transparent;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+}
+
+.erd-button.cancel:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #475569;
+}
+
+.erd-editor-container.dark .erd-button.add {
+  background-color: #3b82f6;
+}
+
+.erd-editor-container.dark .erd-button.add:hover {
+  background-color: #2563eb;
+}
+
+.erd-editor-container.dark .erd-button.add:disabled {
+  background-color: #1d4ed8;
+  opacity: 0.6;
+}
+
+.erd-editor-container.dark .erd-button.cancel {
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+.erd-editor-container.dark .erd-button.cancel:hover {
+  background-color: #334155;
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .erd-toolbar {
+    flex-wrap: wrap;
+  }
+  
+  .erd-toolbar-button {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+  }
+  
+  .erd-entity {
+    min-width: 180px;
+  }
+}

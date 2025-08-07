@@ -112,7 +112,10 @@ const ProjectCreator = ({ isOpen, onClose, onCreate }) => {
     const trimmedName = projectName.trim();
     if (!trimmedName) {
       console.error('Project name is required');
-      // Show error toast
+      setGenerationProgress({ 
+        status: 'error', 
+        message: 'Project name is required' 
+      });
       return;
     }
     
@@ -125,39 +128,50 @@ const ProjectCreator = ({ isOpen, onClose, onCreate }) => {
       // Use the generated plan or create a default structure
       const projectInfo = {
         name: trimmedName,
-        description: projectDescription,
-        template: selectedTemplate?.id,
-        tags: selectedTags,
+        description: projectDescription || `A new CodeCraft AI project using ${selectedTemplate?.name || 'custom'} template`,
+        template: selectedTemplate?.id || 'custom',
+        tags: selectedTags.length > 0 ? selectedTags : ['new'],
         metadata: {
           idea: projectIdea,
-          framework: generatedFramework,
+          framework: generatedFramework || selectedTemplate?.name,
           architecture: generatedArchitecture,
-          logo: generatedLogo
+          logo: generatedLogo,
+          createdAt: new Date().toISOString()
         }
       };
+      
+      console.log('Project info prepared:', projectInfo);
+      setGenerationProgress({ status: 'generating', message: 'Generating project files...' });
       
       // Use the ProjectGenerator service to create the project
       const project = await ProjectGenerator.generateProject(
         projectInfo, 
         generatedPlan || { projectDescription, structure: {} },
         (progress) => {
+          console.log('Project generation progress:', progress);
           setGenerationProgress(progress);
         }
       );
       
-      // Call the onCreate callback with the generated project
-      onCreate(project);
+      console.log('Project successfully generated:', project);
+      setGenerationProgress({ status: 'success', message: 'Project created successfully!' });
       
-      // Reset the form
-      resetForm();
-      
-      // Close the modal
-      onClose();
+      // Add a small delay to show success message before closing
+      setTimeout(() => {
+        // Call the onCreate callback with the generated project
+        onCreate(project);
+        
+        // Reset the form
+        resetForm();
+        
+        // Close the modal
+        onClose();
+      }, 1000);
     } catch (error) {
       console.error('Error creating project:', error);
       setGenerationProgress({ 
         status: 'error', 
-        message: error.message || 'Failed to create project' 
+        message: error.message || 'Failed to create project. Please try again.' 
       });
     } finally {
       setIsCreating(false);
@@ -202,75 +216,73 @@ const ProjectCreator = ({ isOpen, onClose, onCreate }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden max-w-4xl w-full max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-white">
-            {step === 1 && 'Select Project Template'}
-            {step === 2 && 'Describe Your Project Idea'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col transition-all duration-300 ease-in-out transform">
+        {/* Header with progress indicator */}
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+          <h2 className="text-xl font-semibold">
+            {step === 1 && 'Choose a Template'}
+            {step === 2 && 'Describe Your Project'}
             {step === 3 && 'Review Project Plan'}
-            {step === 4 && 'Project Details'}
           </h2>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-            onClick={onClose}
-          >
-            <span className="sr-only">Close</span>
-            <FiX className="h-6 w-6" />
-          </button>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-1">
+              {[1, 2, 3].map((s) => (
+                <div 
+                  key={s} 
+                  className={`w-3 h-3 rounded-full ${step >= s ? 'bg-white' : 'bg-white bg-opacity-30'}`}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              className="text-white hover:text-gray-200 focus:outline-none transition-transform transform hover:rotate-90 duration-300"
+              onClick={onClose}
+            >
+              <FiX className="h-6 w-6" />
+            </button>
+          </div>
         </div>
         
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {/* Step 1: Template Selection */}
+        <div className="flex-1 overflow-auto p-6">
           {step === 1 && (
-            <div>
-              <div className="mb-4">
-                <div className="relative">
-                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    className="pl-10 w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                    placeholder="Search templates..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
+            <div className="space-y-6">
+              <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 shadow-sm">
+                <FiSearch className="text-gray-400 h-5 w-5" />
+                <input
+                  type="text"
+                  placeholder="Search templates..."
+                  className="bg-transparent border-none focus:outline-none flex-1 text-gray-700 dark:text-gray-200 text-lg"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {filteredTemplates.map((template) => (
+              <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300">Select a template to get started</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredTemplates.map(template => (
                   <div
                     key={template.id}
-                    className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedTemplate?.id === template.id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                    }`}
+                    className={`border rounded-lg p-5 cursor-pointer transition-all duration-200 transform hover:scale-[1.02] ${selectedTemplate?.id === template.id ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md' : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md'}`}
                     onClick={() => handleTemplateSelect(template)}
                   >
-                    <div className="flex items-center">
-                      {template.icon}
-                      <div className="ml-3">
-                        <h3 className="font-medium text-gray-900 dark:text-white">
-                          {template.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {template.description}
-                        </p>
+                    <div className="flex items-start space-x-4">
+                      <div className="flex-shrink-0 p-3 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 rounded-lg">
+                        {template.icon}
                       </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {template.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
-                        >
-                          {tag}
-                        </span>
-                      ))}
+                      <div>
+                        <h3 className="font-medium text-gray-900 dark:text-white text-lg">{template.name}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{template.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {template.tags.map(tag => (
+                            <span key={tag} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}

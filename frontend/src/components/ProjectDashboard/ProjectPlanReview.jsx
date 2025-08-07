@@ -225,7 +225,7 @@ const ProjectPlanReview = ({
                   {projectName}
                 </h3>
                 <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-2">
-                  {plan.projectDescription || plan.description || 'A new project created with Windsurf AI'}
+                  {plan.projectDescription || plan.description || 'A new project created with CodeCraft AI'}
                 </p>
               </div>
             </div>
@@ -280,7 +280,7 @@ const ProjectPlanReview = ({
                         <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</h5>
                         <div>
                           <p className="text-gray-900 dark:text-white">
-                            {plan.projectDescription || plan.description || 'A new project created with Windsurf AI'}
+                            {plan.projectDescription || plan.description || 'A new project created with CodeCraft AI'}
                           </p>
                           {(!plan.projectDescription && !plan.description) && (
                             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
@@ -340,7 +340,7 @@ const ProjectPlanReview = ({
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white">{projectName}</h3>
                         <p className="text-gray-500 dark:text-gray-400 mt-1">
-                          {plan.projectDescription?.substring(0, 60) || 'A new project generated with Windsurf AI'}
+                          {plan.projectDescription?.substring(0, 60) || 'A new project generated with CodeCraft AI'}
                           {plan.projectDescription?.length > 60 ? '...' : ''}
                         </p>
                       </div>

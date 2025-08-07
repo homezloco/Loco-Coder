@@ -260,6 +260,7 @@ async def read_users_me(current_user: User = Depends()):
             detail="Not authenticated"
         )
     return {
+        "id": current_user.username,  
         "username": current_user.username,
         "email": current_user.email,
         "full_name": current_user.full_name,

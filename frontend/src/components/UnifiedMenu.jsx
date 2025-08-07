@@ -215,8 +215,8 @@ const UnifiedMenu = ({
       <div className="menu-container">
         {/* Branding */}
         <a href="/" className="branding">
-          <span role="img" aria-label="App Logo">🚀</span>
-          <span>WindSurf</span>
+          <span role="img" aria-label="App Logo">⚡</span>
+          <span>CodeCraft AI</span>
         </a>
 
         {/* Mobile menu button */}
