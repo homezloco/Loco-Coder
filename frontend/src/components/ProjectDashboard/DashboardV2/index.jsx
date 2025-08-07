@@ -58,6 +58,7 @@ const DashboardV2 = ({ isDarkMode = false }) => {
     handleProjectDescriptionSubmit,
     createProjectFromPlan,
     createProjectFromTemplate,
+    closeProjectCreator,
   } = useProjectCreation();
   
   // Get feedback context
@@ -211,7 +212,7 @@ const DashboardV2 = ({ isDarkMode = false }) => {
         <ProjectPlanReview
           plan={projectPlan || {}}
           onClose={closeProjectPlan}
-          onConfirm={createProjectFromPlan}
+          onConfirm={() => createProjectFromPlan(projectPlan)}
           isGenerating={isGeneratingPlan}
           aiService={aiService}
         />
@@ -219,7 +220,7 @@ const DashboardV2 = ({ isDarkMode = false }) => {
       
       <ProjectCreator
         isOpen={showProjectCreator}
-        onClose={() => setShowProjectCreator(false)}
+        onClose={closeProjectCreator}
         onCreateProject={createProjectFromTemplate}
       />
       

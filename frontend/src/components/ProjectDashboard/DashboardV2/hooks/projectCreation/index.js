@@ -349,6 +349,10 @@ venv.bak/
   
   // Function to create a project from a plan
   const createProjectFromPlan = useCallback(async (planData) => {
+    console.debug('[ProjectCreator] createProjectFromPlan called', {
+      hasPlan: !!planData,
+      filesCount: Array.isArray(planData?.files) ? planData.files.length : undefined,
+    });
     if (!planData) {
       const error = new Error('No plan data provided');
       console.error('[ProjectCreator] Error in createProjectFromPlan:', error);
@@ -375,10 +379,28 @@ venv.bak/
       }
       
       // Try to create project via API if authenticated
-      const api = localStorage.getItem(TOKEN_KEYS.ACCESS_TOKEN);
+      // Correctly retrieve token using configured storage key and storage type
+      const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
+      let token = null;
+      try {
+        if (TOKEN_KEYS?.storageType === 'sessionStorage') {
+          token = sessionStorage.getItem(tokenKey) || localStorage.getItem(tokenKey);
+        } else {
+          token = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+        }
+      } catch (tokenErr) {
+        console.warn('[ProjectCreator] Token access error, proceeding without token:', tokenErr);
+      }
+      console.debug('[ProjectCreator] Token/Network status', {
+        tokenKey,
+        storageType: TOKEN_KEYS?.storageType,
+        hasToken: !!token,
+        online: navigator.onLine,
+      });
       
-      if (api && navigator.onLine) {
+      if (token && navigator.onLine) {
         try {
+          console.info('[ProjectCreator] Using API path to create project');
           const apiProject = await createProjectFromContext(projectData);
           
           if (apiProject && apiProject.id) {
@@ -408,16 +430,13 @@ venv.bak/
       } catch (indexedDBError) {
         console.error('[ProjectCreator] IndexedDB save error:', indexedDBError);
       }
-      
-      // Then save to localStorage as fallback
       let savedToLocal = false;
       try {
         savedToLocal = saveToLocalStorage(projectData);
-        console.log('[ProjectCreator] Saved to localStorage:', savedToLocal);
       } catch (localStorageError) {
         console.error('[ProjectCreator] localStorage save error:', localStorageError);
       }
-      
+      console.debug('[ProjectCreator] Local save results', { savedToIndexedDB, savedToLocal });
       if (savedToIndexedDB || savedToLocal) {
         const message = !navigator.onLine ? ' (offline mode)' : ' (local storage)';
         showSuccessToast(`Project created${message}`);
