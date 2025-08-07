@@ -11,6 +11,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import { ProjectProvider } from './contexts/NewProjectContext';
 import { ApiProvider, useApi } from './contexts/NewApiContext';
 import { AIProvider } from './contexts/AIContext';
+import { PreferencesProvider } from './contexts/PreferencesContext';
 import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ToastContainer } from './components/feedback/Toast';
 import './App.css';
@@ -59,8 +60,9 @@ const AppContainer = () => {
         <NewAuthProvider>
           <ApiProvider>
             <ProjectProvider>
-              <AIProvider>
-                <HotkeysProvider>
+              <PreferencesProvider>
+                <AIProvider>
+                  <HotkeysProvider>
                   <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
                     <Routes>
                       <Route 
@@ -112,8 +114,9 @@ const AppContainer = () => {
                       onDismiss={handleDismissToast}
                     />
                   </Suspense>
-                </HotkeysProvider>
-              </AIProvider>
+                  </HotkeysProvider>
+                </AIProvider>
+              </PreferencesProvider>
             </ProjectProvider>
           </ApiProvider>
         </NewAuthProvider>

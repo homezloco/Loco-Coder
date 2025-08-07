@@ -730,6 +730,127 @@
   border-top: 1px solid #e0e0e0;
 }
 
+/* Error UI */
+.error-container {
+  background-color: #fff5f5;
+  border: 1px solid #fc8181;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.dark-mode .error-container {
+  background-color: #2d3748;
+  border: 1px solid #fc8181;
+}
+
+.error-header {
+  background-color: #fed7d7;
+  color: #c53030;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dark-mode .error-header {
+  background-color: #742a2a;
+  color: #fed7d7;
+}
+
+.error-icon {
+  font-size: 20px;
+}
+
+.error-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.error-details {
+  padding: 16px;
+}
+
+.error-message {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.dark-mode .error-message {
+  color: #e2e8f0;
+}
+
+.error-recovery h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+}
+
+.dark-mode .error-recovery h4 {
+  color: #e2e8f0;
+}
+
+.recovery-suggestions {
+  margin: 0 0 16px 0;
+  padding-left: 24px;
+}
+
+.recovery-suggestions li {
+  margin-bottom: 6px;
+  color: #4a5568;
+  font-size: 14px;
+}
+
+.dark-mode .recovery-suggestions li {
+  color: #e2e8f0;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.error-action-button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e2e8f0;
+  background-color: #f7fafc;
+  color: #4a5568;
+}
+
+.dark-mode .error-action-button {
+  border: 1px solid #4a5568;
+  background-color: #2d3748;
+  color: #e2e8f0;
+}
+
+.error-action-button.primary {
+  background-color: #4299e1;
+  color: white;
+  border: 1px solid #3182ce;
+}
+
+.dark-mode .error-action-button.primary {
+  background-color: #3182ce;
+  border: 1px solid #2b6cb0;
+}
+
+.error-action-button:hover {
+  opacity: 0.9;
+}
+
 .dark-mode .preview-actions {
   border-top: 1px solid #4a5568;
 }
