@@ -9,7 +9,7 @@ const UIContext = createContext();
 
 export const useUI = () => useContext(UIContext);
 
-// Create a theme with modern styling similar to Replit/Windsurf
+// Create a theme with modern styling for CodeCraft AI
 const theme = createTheme({
   palette: {
     primary: {

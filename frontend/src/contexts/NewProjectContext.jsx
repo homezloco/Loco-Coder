@@ -507,18 +507,31 @@ export const ProjectProvider = ({ children }) => {
 
   // Create a new project
   const createProject = useCallback(async (projectData) => {
-    if (!isAuthenticated) {
-      showErrorToast('You must be logged in to create a project');
-      navigate('/login');
-      return null;
-    }
+    // Allow project creation even when not authenticated, using local storage as fallback
+    const useLocalFallback = !isAuthenticated;
     
     try {
       setLoading(true);
       setError(null);
       
       console.log('[ProjectContext] Creating new project...');
-      const newProject = await api.projects.createProject(projectData);
+      
+      let newProject;
+      
+      if (useLocalFallback) {
+        // Create a local project when not authenticated
+        console.log('[ProjectContext] Using local fallback for project creation');
+        newProject = {
+          ...projectData,
+          id: `local_${Date.now()}`,
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+          isLocal: true
+        };
+      } else {
+        // Use API when authenticated
+        newProject = await api.projects.createProject(projectData);
+      }
       
       if (newProject) {
         console.log(`[ProjectContext] Successfully created project ${newProject.id}`);

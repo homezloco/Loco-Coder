@@ -90,7 +90,7 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (username, password, rememberMe = false) => {
     try {
-      setIsLoading(true);
+      setLoading(true);
       
       // Clear any existing auth state
       await api.clearAuthToken();

@@ -41,7 +41,7 @@ const Terminal = () => {
     fitAddon.current.fit();
 
     // Initial welcome message
-    terminal.current.writeln('Welcome to Windsurf Terminal\r\n');
+    terminal.current.writeln('Welcome to CodeCraft AI Terminal\r\n');
     terminal.current.writeln('Connecting to terminal server...\r\n');
 
     // Handle window resize

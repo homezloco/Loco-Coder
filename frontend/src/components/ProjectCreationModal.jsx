@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { FiCheck, FiUpload, FiFolder, FiAlertCircle, FiInfo, FiEye } from 'react-icons/fi';
 import '../styles/ProjectCreationModal.css';
 
 /**
@@ -28,6 +29,20 @@ const ProjectCreationModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [tagInput, setTagInput] = useState('');
+  
+  // Enhanced validation state for real-time feedback
+  const [touched, setTouched] = useState({
+    name: false,
+    description: false
+  });
+  
+  // Template preview state
+  const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  
+  // Refs for form elements
+  const nameInputRef = useRef(null);
+  const fileInputRef = useRef(null);
   
   // Available languages with icons
   const languages = [
@@ -67,34 +82,69 @@ const ProjectCreationModal = ({
     }
   }, [isOpen]);
 
-  const validate = () => {
-    let newErrors = {};
+  const validate = (field = null) => {
+    let newErrors = {...errors};
     
-    if (!formData.name.trim()) {
-      newErrors.name = 'Project name is required';
-    } else if (formData.name.length < 3) {
-      newErrors.name = 'Project name must be at least 3 characters';
+    // Validate specific field or all fields
+    if (!field || field === 'name') {
+      if (!formData.name.trim()) {
+        newErrors.name = 'Project name is required';
+      } else if (formData.name.length < 3) {
+        newErrors.name = 'Project name must be at least 3 characters';
+      } else if (formData.name.length > 50) {
+        newErrors.name = 'Project name cannot exceed 50 characters';
+      } else {
+        delete newErrors.name;
+      }
     }
     
-    if (formData.description && formData.description.length > 200) {
-      newErrors.description = 'Description cannot exceed 200 characters';
+    if (!field || field === 'description') {
+      if (formData.description && formData.description.length > 200) {
+        newErrors.description = 'Description cannot exceed 200 characters';
+      } else {
+        delete newErrors.description;
+      }
     }
     
-    setErrors(newErrors);
+    // Only update errors state if we're validating all fields or a specific field
+    if (!field || field === 'name' || field === 'description') {
+      setErrors(newErrors);
+    }
+    
     return Object.keys(newErrors).length === 0;
   };
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
+    // Update form data
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
     
-    // Clear the specific error when user corrects it
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }));
+    // Mark field as touched for validation styling
+    if (!touched[name]) {
+      setTouched(prev => ({
+        ...prev,
+        [name]: true
+      }));
     }
+    
+    // Perform real-time validation for this field
+    setTimeout(() => validate(name), 0);
+  };
+  
+  // Handle field blur for validation feedback
+  const handleBlur = (e) => {
+    const { name } = e.target;
+    
+    setTouched(prev => ({
+      ...prev,
+      [name]: true
+    }));
+    
+    validate(name);
   };
 
   const handleLanguageSelect = (languageId) => {
@@ -103,6 +153,31 @@ const ProjectCreationModal = ({
 
   const handleTemplateSelect = (templateId) => {
     setFormData(prev => ({ ...prev, template: templateId }));
+  };
+  
+  // Show template preview
+  const handleShowPreview = (template) => {
+    setPreviewTemplate(template);
+    setShowPreview(true);
+  };
+  
+  // Close template preview
+  const handleClosePreview = () => {
+    setShowPreview(false);
+  };
+  
+  // Get template preview image based on template ID
+  const getTemplatePreviewImage = (templateId) => {
+    // In a real application, these would be actual preview images
+    const previewImages = {
+      blank: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPkJsYW5rIFByb2plY3Q8L3RleHQ+PC9zdmc+',
+      api: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPkFQSSBTZXJ2ZXI8L3RleHQ+PC9zdmc+',
+      webapp: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPldlYiBBcHBsaWNhdGlvbjwvdGV4dD48L3N2Zz4=',
+      fullstack: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPkZ1bGwgU3RhY2sgQXBwPC90ZXh0Pjwvc3ZnPg==',
+      mobile: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPk1vYmlsZSBBcHA8L3RleHQ+PC9zdmc+'
+    };
+    
+    return previewImages[templateId] || previewImages.blank;
   };
 
   const handleTagAdd = () => {
@@ -199,46 +274,97 @@ const ProjectCreationModal = ({
   };
 
   if (!isOpen) return null;
-
+  
   return (
     <div className="modal-overlay">
-      <div className="project-creation-modal">
-        <div className="modal-header">
-          <h2>Create New Project</h2>
-          <button className="close-button" onClick={onClose}>×</button>
-        </div>
+        {/* Template Preview Modal */}
+        {showPreview && previewTemplate && (
+          <div className="modal-overlay" style={{ zIndex: 9100 }}>
+            <div className="project-creation-modal" style={{ maxWidth: '800px' }}>
+              <div className="modal-header">
+                <h2>Template Preview: {previewTemplate.name}</h2>
+                <button type="button" className="close-button" onClick={handleClosePreview}>×</button>
+              </div>
+              <div className="step-content" style={{ padding: '0' }}>
+                <div style={{ padding: '20px' }}>
+                  <h3>Template Features</h3>
+                  <ul>
+                    <li>Project structure optimized for {previewTemplate.name}</li>
+                    <li>Pre-configured settings and dependencies</li>
+                    <li>Example code and documentation</li>
+                    <li>Best practices for {formData.language} development</li>
+                  </ul>
+                  
+                  <div style={{ marginTop: '20px', border: '1px solid var(--border-color, #ddd)', borderRadius: '4px', overflow: 'hidden' }}>
+                    <img 
+                      src={getTemplatePreviewImage(previewTemplate.id)} 
+                      alt={`${previewTemplate.name} preview`} 
+                      style={{ width: '100%', height: 'auto' }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="primary-button" 
+                  onClick={() => {
+                    handleTemplateSelect(previewTemplate.id);
+                    handleClosePreview();
+                  }}
+                >
+                  Use This Template
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
-        <form onSubmit={handleSubmit}>
+        <div className="project-creation-modal">
+          <div className="modal-header">
+            <h2>{currentStep === 1 ? 'Create New Project' : 'Choose Project Settings'}</h2>
+            <button className="close-button" onClick={onClose}>×</button>
+          </div>
+          
+          <form onSubmit={handleSubmit}>
           {currentStep === 1 ? (
             <div className="step-content">
               <div className="form-group">
-                <label htmlFor="project-name">Project Name *</label>
+                <label htmlFor="project-name" className="required-field">Project Name</label>
+                <div className="field-hint">Choose a unique name for your project</div>
                 <input
                   id="project-name"
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
+                  ref={nameInputRef}
+                  className={touched.name ? (errors.name ? 'error' : 'valid') : ''}
                   placeholder="My Awesome Project"
-                  className={errors.name ? 'error' : ''}
                   autoFocus
                 />
-                {errors.name && <div className="error-message">{errors.name}</div>}
+                {touched.name && errors.name && <div className="error-message">{errors.name}</div>}
+                {touched.name && !errors.name && formData.name.trim().length >= 3 && (
+                  <div className="success-message">Valid project name</div>
+                )}
               </div>
               
               <div className="form-group">
                 <label htmlFor="project-description">Description</label>
+                <div className="field-hint">Briefly describe what your project does</div>
                 <textarea
                   id="project-description"
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   placeholder="Brief description of your project"
                   rows={3}
-                  className={errors.description ? 'error' : ''}
+                  className={touched.description ? (errors.description ? 'error' : formData.description.length > 0 ? 'valid' : '') : ''}
                 />
-                {errors.description && <div className="error-message">{errors.description}</div>}
-                <div className="char-counter">
+                {touched.description && errors.description && <div className="error-message">{errors.description}</div>}
+                <div className="char-counter" style={{ color: formData.description.length > 180 ? (formData.description.length > 200 ? 'var(--danger-color, #e53935)' : 'var(--warning-color, #ff9800)') : 'var(--text-secondary, #666)' }}>
                   {formData.description.length}/200
                 </div>
               </div>
@@ -324,8 +450,47 @@ const ProjectCreationModal = ({
                     >
                       <h4>{template.name}</h4>
                       <p>{template.description}</p>
+                      <div className="template-preview">
+                        <img src={getTemplatePreviewImage(template.id)} alt={`${template.name} preview`} />
+                      </div>
+                      <button 
+                        type="button" 
+                        className="secondary-button" 
+                        style={{ marginTop: '10px', width: '100%' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShowPreview(template);
+                        }}
+                      >
+                        <FiEye style={{ marginRight: '5px' }} /> Preview Template
+                      </button>
                     </div>
                   ))}
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <div className="import-section">
+                  <h4>Import Existing Project</h4>
+                  <p>Have an existing project? Import it to continue development</p>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    accept=".zip,.json"
+                    onChange={(e) => {
+                      // Handle file import logic here
+                      console.log('File selected:', e.target.files[0]);
+                      // In a real implementation, this would parse the project file
+                    }}
+                  />
+                  <button 
+                    type="button"
+                    className="import-button"
+                    onClick={() => fileInputRef.current.click()}
+                  >
+                    <FiUpload /> Import Project
+                  </button>
                 </div>
               </div>
             </div>
@@ -371,6 +536,7 @@ const ProjectCreationModal = ({
             </div>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

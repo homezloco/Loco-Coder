@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import ModelStatusIndicator from './feedback/ModelStatusIndicator';
 import AIDiagnosticTool from './AIDiagnosticTool';
 import { ApiStatusContext } from '../contexts/ApiStatusContext.jsx';
+import './styles/AIStatusHeader.css'; // Added dedicated CSS file for better styling control
 
 /**
  * AIStatusHeader provides a compact header component showing AI service status
@@ -61,28 +62,28 @@ const AIStatusHeader = () => {
         return {
           icon: '✓',
           text: 'AI Ready',
-          className: 'text-green-600',
+          className: 'status-success',
           tooltip: 'AI services are operating normally'
         };
       case 'partial':
         return {
           icon: '⚠️',
           text: 'Degraded',
-          className: 'text-yellow-600',
+          className: 'status-partial',
           tooltip: errorMessage || 'Some AI services may be degraded'
         };
       case 'error':
         return {
           icon: '⚠️',
           text: 'AI Unavailable',
-          className: 'text-red-600',
+          className: 'status-error',
           tooltip: errorMessage || 'AI services are currently unavailable'
         };
       default:
         return {
           icon: '⋯',
           text: 'Checking...',
-          className: 'text-gray-600',
+          className: 'status-checking',
           tooltip: 'Checking AI service status...'
         };
     }
@@ -91,35 +92,46 @@ const AIStatusHeader = () => {
   const statusDisplay = getStatusDisplay();
   const lastCheckDisplay = lastChecked ? `Last checked: ${formatLastCheckTime()}` : '';
   
+  
   return (
-    <div className="ai-status-header flex items-center gap-2 p-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-      <div 
-        className={`status-indicator flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium ${statusDisplay.className} group relative`}
-        title={`${statusDisplay.tooltip} ${lastCheckDisplay}`.trim()}
-      >
-        <span className="inline-block w-4 text-center">{statusDisplay.icon}</span>
-        <span>{statusDisplay.text}</span>
-        
-        {/* Tooltip */}
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-800 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-          {statusDisplay.tooltip}
-          {lastCheckDisplay && (
-            <div className="text-gray-300 text-2xs mt-0.5">
-              {lastCheckDisplay}
-            </div>
-          )}
+    <div className="ai-status-header">
+      <div className="ai-status-left-section">
+        <div 
+          className={`status-indicator ${statusDisplay.className}`}
+          title={`${statusDisplay.tooltip} ${lastCheckDisplay}`.trim()}
+        >
+          <span className="status-icon">{statusDisplay.icon}</span>
+          <span className="status-text">{statusDisplay.text}</span>
+          
+          {/* Tooltip */}
+          <div className="status-tooltip">
+            {statusDisplay.tooltip}
+            {lastCheckDisplay && (
+              <div className="tooltip-detail">
+                {lastCheckDisplay}
+              </div>
+            )}
+          </div>
         </div>
+        
+        {lastChecked && (
+          <div className="last-checked">
+            Last checked: {formatLastCheckTime()}
+          </div>
+        )}
       </div>
       
-      <ModelStatusIndicator className="hidden md:block" />
-      
-      <button 
-        onClick={handleOpenDiagnostics}
-        className="diagnostic-button text-xs bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-md transition-colors"
-        title="Open AI diagnostic tools"
-      >
-        Diagnose
-      </button>
+      <div className="ai-status-right-section">
+        <ModelStatusIndicator />
+        
+        <button 
+          onClick={handleOpenDiagnostics}
+          className="diagnostic-button"
+          title="Open AI diagnostic tools"
+        >
+          Diagnose
+        </button>
+      </div>
       
       <AIDiagnosticTool 
         isOpen={showDiagnostics}

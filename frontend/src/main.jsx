@@ -5,6 +5,7 @@ import App from './App';
 import { FeedbackProvider } from './components/feedback';
 import AppUIProvider from './components/AppUIProvider';
 import api from './services/api';
+import './styles/darkMode.css';
 
 // Initialize the API client and make it globally available
 console.log('[App] Initializing API client');

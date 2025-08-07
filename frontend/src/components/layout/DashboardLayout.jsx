@@ -3,7 +3,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../ui/resi
 import './layout.css';
 
 /**
- * DashboardLayout component for windsurf-style layout with resizable panels
+ * DashboardLayout component for CodeCraft AI layout with resizable panels
  * Provides preset buttons for quick layout adjustments
  */
 const DashboardLayout = ({ 

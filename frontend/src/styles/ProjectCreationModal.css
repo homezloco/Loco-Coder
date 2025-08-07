@@ -77,36 +77,123 @@
   margin-bottom: 8px;
   font-weight: 500;
   color: var(--text-primary, #333);
+  position: relative;
+}
+
+/* Required field indicator */
+.required-field::after {
+  content: '*';
+  color: var(--danger-color, #e53935);
+  margin-left: 4px;
+}
+
+/* Field description/hint */
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  margin-top: 4px;
+  margin-bottom: 8px;
+  font-style: italic;
 }
 
 input[type="text"],
 textarea {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+  border-radius: 6px;
   background-color: var(--input-bg, #fff);
   color: var(--text-primary, #333);
   font-size: 1rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+/* Modern form field with floating label effect */
+.form-field-container {
+  position: relative;
+  margin-bottom: 24px;
 }
 
 input[type="text"]:focus,
 textarea:focus {
   border-color: var(--accent-color, #4a8df6);
-  box-shadow: 0 0 0 2px rgba(74, 141, 246, 0.2);
+  box-shadow: 0 0 0 3px rgba(74, 141, 246, 0.15);
   outline: none;
+}
+
+/* Valid state indicator */
+input.valid,
+textarea.valid {
+  border-color: var(--success-color, #43a047);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2343a047' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 36px;
 }
 
 input.error,
 textarea.error {
   border-color: var(--danger-color, #e53935);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23e53935' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cline x1='12' y1='8' x2='12' y2='12'%3E%3C/line%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'%3E%3C/line%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 36px;
+  box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.1);
 }
 
 .error-message {
   color: var(--danger-color, #e53935);
   font-size: 0.875rem;
-  margin-top: 5px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  animation: errorFadeIn 0.2s ease-in-out;
+}
+
+.error-message::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23e53935' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cline x1='12' y1='8' x2='12' y2='12'%3E%3C/line%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'%3E%3C/line%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.success-message {
+  color: var(--success-color, #43a047);
+  font-size: 0.875rem;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  animation: successFadeIn 0.2s ease-in-out;
+}
+
+.success-message::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2343a047' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+@keyframes errorFadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes successFadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .submit-error {
@@ -290,15 +377,132 @@ textarea.error {
 .template-options {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+}
+
+/* Template preview thumbnail */
+.template-preview {
+  width: 100%;
+  height: 120px;
+  background-color: var(--panel-bg-light, #f5f7fa);
+  border-radius: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border-color, #ddd);
+}
+
+.template-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.template-preview:hover img {
+  transform: scale(1.05);
 }
 
 .template-option {
-  padding: 12px 16px;
+  padding: 16px;
   border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition: all 0.2s ease;
+}
+
+.template-option:hover {
+  border-color: var(--accent-color, #4a8df6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.template-option.selected {
+  border-color: var(--accent-color, #4a8df6);
+  background-color: var(--accent-bg-light, #edf2fa);
+}
+
+.template-option h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #333);
+}
+
+.template-option p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+}
+
+/* Import section styling */
+.import-section {
+  padding: 16px;
+  border: 1px dashed var(--border-color, #ddd);
+  border-radius: 8px;
+  text-align: center;
+  margin-top: 20px;
+  background-color: var(--panel-bg-light, #f5f7fa);
+  transition: all 0.2s ease;
+}
+
+.import-section:hover {
+  border-color: var(--accent-color, #4a8df6);
+  background-color: var(--accent-bg-light, #edf2fa);
+}
+
+.import-section h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #333);
+}
+
+.import-section p {
+  margin: 0 0 16px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+}
+
+.import-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: var(--accent-color, #4a8df6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  margin: 0 auto;
+  transition: background-color 0.2s;
+}
+
+.import-button:hover {
+  background-color: var(--accent-hover, #3a7de6);
+}
+
+/* Animation for modal appearance */
+@keyframes modal-appear {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.template-option:hover .template-preview img {
+  transform: scale(1.05);
+}
+
+.template-option {
+  padding: 16px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.template-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
 }
 
 .template-option:hover {
@@ -331,6 +535,50 @@ textarea.error {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Keyboard navigation focus styles */
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent-color, #4a8df6);
+  outline-offset: 2px;
+}
+
+/* Import section styles */
+.import-section {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px dashed var(--border-color, #ddd);
+  border-radius: 6px;
+  background-color: var(--panel-bg-light, #f5f7fa);
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.import-section:hover {
+  border-color: var(--accent-color, #4a8df6);
+  background-color: var(--accent-bg-light, #edf2fa);
+}
+
+.import-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px auto 0;
+  padding: 10px 16px;
+  background-color: var(--accent-color, #4a8df6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.import-button:hover {
+  background-color: var(--accent-hover, #3a7de6);
 }
 
 /* Dark mode adjustments */

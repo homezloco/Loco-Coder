@@ -9,7 +9,10 @@ import {
   FiGitBranch, 
   FiClock,
   FiCode,
-  FiExternalLink
+  FiExternalLink,
+  FiCopy,
+  FiPlay,
+  FiDownload
 } from 'react-icons/fi';
 import { 
   FaJs, 
@@ -348,32 +351,40 @@ const ProjectCard = memo(({
       opacity: 1, 
       y: 0, 
       scale: 1,
+      boxShadow: isDarkMode 
+        ? '0 4px 12px -1px rgba(0, 0, 0, 0.3), 0 2px 6px -1px rgba(0, 0, 0, 0.2)' 
+        : '0 4px 12px -1px rgba(0, 0, 0, 0.1), 0 2px 6px -1px rgba(0, 0, 0, 0.06)',
       transition: { 
         type: 'spring',
-        stiffness: 400,
-        damping: 25,
-        when: 'beforeChildren',
-        staggerChildren: 0.03,
-        delay: Math.random() * 0.1 // Slight stagger between cards
+        stiffness: 260,
+        damping: 20
       }
     },
     hover: { 
-      y: -4,
+      y: -5,
+      scale: 1.02,
       boxShadow: isDarkMode 
-        ? '0 15px 30px -10px rgba(0, 0, 0, 0.3), 0 10px 15px -5px rgba(0, 0, 0, 0.12)'
-        : '0 15px 30px -10px rgba(0, 0, 0, 0.15), 0 10px 15px -5px rgba(0, 0, 0, 0.08)',
-      transition: {
+        ? '0 12px 20px -3px rgba(0, 0, 0, 0.4), 0 6px 10px -2px rgba(0, 0, 0, 0.2)' 
+        : '0 12px 20px -3px rgba(0, 0, 0, 0.15), 0 6px 10px -2px rgba(0, 0, 0, 0.08)',
+      transition: { 
         type: 'spring',
         stiffness: 400,
         damping: 15
       }
     },
     tap: { 
-      scale: 0.97,
-      transition: {
+      scale: 0.98,
+      transition: { 
         type: 'spring',
-        stiffness: 1000,
-        damping: 30
+        stiffness: 500,
+        damping: 20
+      }
+    },
+    exit: { 
+      opacity: 0,
+      scale: 0.95,
+      transition: { 
+        duration: 0.2 
       }
     }
   };
@@ -676,6 +687,94 @@ const ProjectCard = memo(({
         </div>
       )}
       
+      {/* Quick Actions Bar - Only visible on hover or when selected */}
+      <AnimatePresence>
+        {(isHovered || isSelected) && (
+          <motion.div 
+            className="absolute top-0 right-0 left-0 px-4 py-2 flex justify-end gap-2 z-10"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              background: isDarkMode 
+                ? 'linear-gradient(to bottom, rgba(17, 24, 39, 0.9) 0%, rgba(17, 24, 39, 0.7) 60%, rgba(17, 24, 39, 0) 100%)'
+                : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 60%, rgba(255, 255, 255, 0) 100%)',
+              backdropFilter: 'blur(4px)'
+            }}
+          >
+            <button
+              className="p-1.5 rounded-full transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              style={{ 
+                background: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkMode ? '#60a5fa' : '#3b82f6'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Handle open project
+                onSelect(project.id);
+              }}
+              title="Open Project"
+              aria-label="Open Project"
+            >
+              <FiPlay className="w-4 h-4" />
+            </button>
+            
+            <button
+              className="p-1.5 rounded-full transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              style={{ 
+                background: isDarkMode ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)',
+                color: isDarkMode ? '#a78bfa' : '#8b5cf6'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Handle duplicate project functionality
+                console.log('Duplicate project:', project.id);
+                // Implement duplicate functionality
+              }}
+              title="Duplicate Project"
+              aria-label="Duplicate Project"
+            >
+              <FiCopy className="w-4 h-4" />
+            </button>
+            
+            <button
+              className="p-1.5 rounded-full transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              style={{ 
+                background: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)',
+                color: isDarkMode ? '#f87171' : '#ef4444'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(e);
+              }}
+              title="Delete Project"
+              aria-label="Delete Project"
+            >
+              <FiTrash2 className="w-4 h-4" />
+            </button>
+            
+            <button
+              className="p-1.5 rounded-full transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              style={{ 
+                background: isDarkMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)',
+                color: isDarkMode ? '#4ade80' : '#22c55e'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Handle download project functionality
+                console.log('Download project:', project.id);
+                // Implement download functionality
+              }}
+              title="Download Project"
+              aria-label="Download Project"
+            >
+              <FiDownload className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Card Footer */}
       <div 
         className="px-4 py-3 border-t bg-opacity-50"
@@ -719,7 +818,7 @@ const ProjectCard = memo(({
                 backgroundColor: `${langColor.main}15`,
                 color: langColor.main,
                 borderColor: `${langColor.main}40`,
-                textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                textShadow: isDarkMode ? 'none' : '0 1px 2px rgba(0,0,0,0.1)'
               }}
             >
               {project.language || 'Unknown'}

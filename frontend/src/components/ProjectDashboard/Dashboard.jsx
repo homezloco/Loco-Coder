@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import '../styles/ProjectCreationModal.css';
 import { 
   checkApiHealth, 
@@ -97,6 +97,10 @@ const Dashboard = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState('recent');
+  const [languageFilter, setLanguageFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'info' });
   const [useVirtualization, setUseVirtualization] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -337,20 +341,80 @@ const Dashboard = ({
         });
       }
       
+      // Apply language filter if active
+      if (languageFilter !== 'all') {
+        filtered = filtered.filter(project => {
+          return project.language === languageFilter || 
+                 project.techStack?.includes(languageFilter) || 
+                 project.tags?.includes(languageFilter);
+        });
+      }
+      
+      // Apply date filter if active
+      if (dateFilter !== 'all') {
+        const now = Date.now();
+        const dayInMs = 24 * 60 * 60 * 1000;
+        
+        filtered = filtered.filter(project => {
+          const createdAt = project.createdAt || project.created_at || 0;
+          if (dateFilter === 'today') {
+            return (now - createdAt) < dayInMs;
+          } else if (dateFilter === 'week') {
+            return (now - createdAt) < (7 * dayInMs);
+          } else if (dateFilter === 'month') {
+            return (now - createdAt) < (30 * dayInMs);
+          }
+          return true;
+        });
+      }
+      
+      // Apply status filter if active
+      if (statusFilter !== 'all') {
+        filtered = filtered.filter(project => {
+          if (statusFilter === 'complete') {
+            return project.status === 'complete' || project.progress === 100;
+          } else if (statusFilter === 'in-progress') {
+            return project.status === 'in-progress' || (project.progress > 0 && project.progress < 100);
+          } else if (statusFilter === 'not-started') {
+            return project.status === 'not-started' || project.progress === 0;
+          }
+          return true;
+        });
+      }
+      
       // Apply search filter if present
       if (searchQuery) {
         filtered = searchProjects(filtered, searchQuery);
       }
       
-      // Sort by relevance if searching, otherwise by recency
+      // Apply sorting based on selected option
       if (searchQuery) {
         // Search results are already sorted by relevance by the searchProjects function
-      } else if (activeFilter === 'recent') {
-        // Sort by last accessed for recent view
-        filtered.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
       } else {
-        // Default sort by creation date, newest first
-        filtered.sort((a, b) => (b.created || 0) - (a.created || 0));
+        switch (sortOption) {
+          case 'recent':
+            filtered.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+            break;
+          case 'created':
+            filtered.sort((a, b) => {
+              const bCreated = b.createdAt || b.created_at || 0;
+              const aCreated = a.createdAt || a.created_at || 0;
+              return bCreated - aCreated;
+            });
+            break;
+          case 'alphabetical':
+            filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            break;
+          case 'favorites':
+            filtered.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
+            break;
+          case 'language':
+            filtered.sort((a, b) => (a.language || '').localeCompare(b.language || ''));
+            break;
+          default:
+            // Default to recent
+            filtered.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+        }
       }
       
       setFilteredProjects(filtered);
@@ -1211,10 +1275,110 @@ const Dashboard = ({
           </button>
         </div>
       </header>
+      
+      {/* Project Filters */}
+      <ProjectFilters
+        searchQuery={searchQuery}
+        onSearch={query => {
+          setSearchQuery(query);
+          // Re-filter projects when search changes
+          const filtered = searchQuery ? searchProjects(projects, query) : projects;
+          setFilteredProjects(filtered);
+        }}
+        currentSortOption={sortOption}
+        onSortChange={option => {
+          setSortOption(option);
+          // Re-sort projects when sort option changes
+          const newFilteredProjects = [...filteredProjects];
+          
+          switch (option) {
+            case 'recent':
+              newFilteredProjects.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+              break;
+            case 'created':
+              newFilteredProjects.sort((a, b) => {
+                const bCreated = b.createdAt || b.created_at || 0;
+                const aCreated = a.createdAt || a.created_at || 0;
+                return bCreated - aCreated;
+              });
+              break;
+            case 'alphabetical':
+              newFilteredProjects.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+              break;
+            case 'favorites':
+              newFilteredProjects.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
+              break;
+            case 'language':
+              newFilteredProjects.sort((a, b) => (a.language || '').localeCompare(b.language || ''));
+              break;
+          }
+          
+          setFilteredProjects(newFilteredProjects);
+        }}
+        onLanguageFilterChange={filter => {
+          setLanguageFilter(filter);
+          // Re-filter projects when language filter changes
+          const filtered = applyFilters(projects, filter, dateFilter, statusFilter);
+          setFilteredProjects(filtered);
+        }}
+        onDateFilterChange={filter => {
+          setDateFilter(filter);
+          // Re-filter projects when date filter changes
+          const filtered = applyFilters(projects, languageFilter, filter, statusFilter);
+          setFilteredProjects(filtered);
+        }}
+        onStatusFilterChange={filter => {
+          setStatusFilter(filter);
+          // Re-filter projects when status filter changes
+          const filtered = applyFilters(projects, languageFilter, dateFilter, filter);
+          setFilteredProjects(filtered);
+        }}
+        isDarkMode={isDarkMode}
+      />
 
       {/* Main content */}
       <div className="dashboard-content" ref={containerRef}>
-        {/* Your existing content */}
+        {isLoading ? (
+          <LoadingState message="Loading projects..." isDarkMode={isDarkMode} />
+        ) : error ? (
+          <ErrorState message={error} isDarkMode={isDarkMode} />
+        ) : filteredProjects.length === 0 ? (
+          <EmptyState 
+            message={searchQuery ? "No projects match your search" : "No projects yet"}
+            actionText={searchQuery ? "Clear search" : "Create your first project"}
+            onAction={searchQuery ? () => setSearchQuery('') : () => setIsCreateModalOpen(true)}
+            isDarkMode={isDarkMode}
+          />
+        ) : (
+          <TransitionContainer>
+            {layoutMode === 'grid' ? (
+              <ProjectGrid
+                projects={filteredProjects}
+                onSelect={handleProjectSelect}
+                selectedProjectId={selectedProjectId}
+                onFavoriteToggle={handleFavoriteToggle}
+                onDelete={project => {
+                  setProjectToDelete(project);
+                  setIsDeleteModalOpen(true);
+                }}
+                isDarkMode={isDarkMode}
+              />
+            ) : (
+              <VirtualizedProjectList
+                projects={filteredProjects}
+                onSelect={handleProjectSelect}
+                selectedProjectId={selectedProjectId}
+                onFavoriteToggle={handleFavoriteToggle}
+                onDelete={project => {
+                  setProjectToDelete(project);
+                  setIsDeleteModalOpen(true);
+                }}
+                containerHeight={containerHeight}
+                isDarkMode={isDarkMode}
+              />
+            )}
+          </TransitionContainer>
+        )}
       </div>
 
       {/* Project Creation Modal */}
@@ -1256,6 +1420,54 @@ const Dashboard = ({
       )}
     </div>
   );
+};
+
+// Helper function to apply all filters at once
+const applyFilters = (allProjects, language, date, status) => {
+  let filtered = [...allProjects];
+  
+  // Apply language filter
+  if (language !== 'all') {
+    filtered = filtered.filter(project => {
+      return project.language === language || 
+             project.techStack?.includes(language) || 
+             project.tags?.includes(language);
+    });
+  }
+  
+  // Apply date filter
+  if (date !== 'all') {
+    const now = Date.now();
+    const dayInMs = 24 * 60 * 60 * 1000;
+    
+    filtered = filtered.filter(project => {
+      const createdAt = project.createdAt || project.created_at || 0;
+      if (date === 'today') {
+        return (now - createdAt) < dayInMs;
+      } else if (date === 'week') {
+        return (now - createdAt) < (7 * dayInMs);
+      } else if (date === 'month') {
+        return (now - createdAt) < (30 * dayInMs);
+      }
+      return true;
+    });
+  }
+  
+  // Apply status filter
+  if (status !== 'all') {
+    filtered = filtered.filter(project => {
+      if (status === 'complete') {
+        return project.status === 'complete' || project.progress === 100;
+      } else if (status === 'in-progress') {
+        return project.status === 'in-progress' || (project.progress > 0 && project.progress < 100);
+      } else if (status === 'not-started') {
+        return project.status === 'not-started' || project.progress === 0;
+      }
+      return true;
+    });
+  }
+  
+  return filtered;
 };
 
 export default Dashboard;

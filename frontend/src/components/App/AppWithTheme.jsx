@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import ToastProvider from '../ui/Toast';
 import AppMain from './AppMain';
 
 /**
@@ -10,9 +11,11 @@ const AppWithTheme = () => {
   const { theme } = useTheme();
 
   return (
-    <div className={`app ${theme}-theme`}>
-      <AppMain />
-    </div>
+    <ToastProvider>
+      <div className={`app ${theme}-theme`}>
+        <AppMain />
+      </div>
+    </ToastProvider>
   );
 };
 

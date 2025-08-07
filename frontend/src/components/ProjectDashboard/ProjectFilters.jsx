@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiSearch, FiX, FiChevronDown } from 'react-icons/fi';
+import { FiSearch, FiX, FiChevronDown, FiFilter, FiSliders, FiArrowDown, FiArrowUp, FiCalendar, FiStar, FiCode } from 'react-icons/fi';
 
 /**
  * Project filtering tabs component with enhanced Replit-like UI and improved accessibility
@@ -18,13 +18,19 @@ const ProjectFilters = ({
   onFilterChange, 
   isDarkMode,
   onSearch,
+  onSort,
   className = '',
-  filterCounts = {} // e.g. { all: 12, recent: 5, favorites: 3, frontend: 8, backend: 4, fullstack: 3 }
+  filterCounts = {}, // e.g. { all: 12, recent: 5, favorites: 3, frontend: 8, backend: 4, fullstack: 3 }
+  currentSortOption = 'updated_desc'
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef(null);
+  const filterMenuRef = useRef(null);
   
   // Handle scroll for header shadow
   useEffect(() => {
@@ -34,6 +40,21 @@ const ProjectFilters = ({
     
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  // Handle clicks outside of dropdown menus
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
+        setIsSortMenuOpen(false);
+      }
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) {
+        setIsAdvancedFilterOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
   
   // Handle search input changes
@@ -453,8 +474,10 @@ ProjectFilters.propTypes = {
   onFilterChange: PropTypes.func.isRequired,
   isDarkMode: PropTypes.bool,
   onSearch: PropTypes.func,
+  onSort: PropTypes.func,
   className: PropTypes.string,
-  filterCounts: PropTypes.object
+  filterCounts: PropTypes.object,
+  currentSortOption: PropTypes.string
 };
 
 export default React.memo(ProjectFilters);

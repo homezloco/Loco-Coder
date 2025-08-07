@@ -4,6 +4,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useProject } from '../../contexts/NewProjectContext';
 import { useApi } from '../../contexts/NewApiContext';
 import { useFeedback } from '../../components/feedback/FeedbackContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import AppLayout from './AppLayout';
 import AppHeader from './AppHeader';
 import Login from '../../pages/Login';
@@ -19,6 +20,7 @@ const AppMain = () => {
   // Auth and context hooks - must be called unconditionally at the top level
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { settings, loading: settingsLoading } = useSettings();
+  const { toggleTheme } = useTheme();
   const { 
     currentProject, 
     loading: projectLoading, 
@@ -126,7 +128,7 @@ const AppMain = () => {
       toggleUserProfile: () => console.log('User profile toggle'),
       toggleChatPanel: () => console.log('Chat panel toggle'),
       toggleProjectDashboard: () => console.log('Project dashboard toggle'),
-      toggleDarkMode: () => console.log('Dark mode toggle'),
+      toggleDarkMode: toggleTheme,
       onLogin: () => console.log('Login'),
       getBreadcrumbPaths: () => [],
       handleBreadcrumbNavigate: () => {}

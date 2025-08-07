@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#2563EB"/>
+  <g transform="scale(16) translate(0, 0)">
+    <path d="M8 16L12 12M8 16L12 20M8 16H18M24 16C24 20.4183 20.4183 24 16 24C15.2057 24 14.4367 23.8794 13.7147 23.6537M24 16C24 11.5817 20.4183 8 16 8C15.2057 8 14.4367 8.12057 13.7147 8.34635" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18 12L22 16L18 20" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="256" y="420" font-family="Arial, sans-serif" font-size="64" font-weight="bold" text-anchor="middle" fill="white">CodeCraft AI</text>
+</svg>
