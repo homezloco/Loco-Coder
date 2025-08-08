@@ -1,5 +1,5 @@
-import { TOKEN_KEYS } from '../config';
-import logger from '../../../utils/logger';
+import { TOKEN_KEYS } from '../config.js';
+import logger from '../../../utils/logger.js';
 const authTokenLog = logger.ns('api:auth:token');
 
 /**

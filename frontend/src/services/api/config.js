@@ -1,4 +1,4 @@
-import logger from '../../utils/logger';
+import logger from '../../utils/logger.js';
 const configLog = logger.ns('api:config');
 
 // Get API configuration from environment variables with fallbacks
@@ -124,7 +124,7 @@ const getTokenConfig = () => {
     refreshThreshold: 300, // 5 minutes before token expires
     cookieOptions: {
       path: '/',
-      secure: window.location.protocol === 'https:',
+      secure: (typeof window !== 'undefined' && window.location) ? (window.location.protocol === 'https:') : false,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7 // 1 week
     }

@@ -4,11 +4,11 @@
 /* eslint-disable no-console */
 // Mock logger to avoid console noise and ensure methods exist
 // Mock logger for both import paths used by modules under test
-jest.mock('../../../utils/logger', () => ({
+jest.mock('../../../utils/logger.js', () => ({
   __esModule: true,
   default: { ns: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), trace: jest.fn(), group: jest.fn(), groupCollapsed: jest.fn(), groupEnd: jest.fn(), once: jest.fn() }) },
 }));
-jest.mock('../../utils/logger', () => ({
+jest.mock('../../utils/logger.js', () => ({
   __esModule: true,
   default: { ns: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), trace: jest.fn(), group: jest.fn(), groupCollapsed: jest.fn(), groupEnd: jest.fn(), once: jest.fn() }) },
 }));
