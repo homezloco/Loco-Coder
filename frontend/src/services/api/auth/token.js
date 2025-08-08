@@ -1,4 +1,6 @@
 import { TOKEN_KEYS } from '../config';
+import logger from '../../../utils/logger';
+const authTokenLog = logger('api:auth:token');
 
 /**
  * @typedef {Object} TokenInfo
@@ -7,7 +9,7 @@ import { TOKEN_KEYS } from '../config';
  */
 
 // Debug log
-console.log('[Auth] Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
+authTokenLog.log('[Auth] Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
 
 // In-memory token cache
 let authToken = {
@@ -41,7 +43,7 @@ const parseToken = (token) => {
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(base64));
   } catch (error) {
-    console.error('Error parsing token:', error);
+    authTokenLog.error('Error parsing token:', error);
     return null;
   }
 };
@@ -79,7 +81,7 @@ export const setAuthToken = (token, remember = true) => {
 
     const decoded = parseToken(token);
     if (!decoded) {
-      console.error('Invalid token format');
+      authTokenLog.error('Invalid token format');
       return false;
     }
 
@@ -113,13 +115,13 @@ export const setAuthToken = (token, remember = true) => {
       
       return true;
     } catch (storageError) {
-      console.error('Error storing token in storage:', storageError);
+      authTokenLog.error('Error storing token in storage:', storageError);
       // Clear partial storage on error
       clearAuthToken();
       return false;
     }
   } catch (error) {
-    console.error('Error setting auth token:', error);
+    authTokenLog.error('Error setting auth token:', error);
     return false;
   }
 };
@@ -139,7 +141,7 @@ const clearAuthToken = () => {
   }
   
   tokenOperations.lastClear = now;
-  console.log('[API] Auth token cleared');
+  authTokenLog.log('[API] Auth token cleared');
   
   // Clear in-memory token
   authToken = { value: null, expires: null, lastChecked: now };
@@ -154,7 +156,7 @@ const clearAuthToken = () => {
         storage.removeItem(TOKEN_KEYS.storageKey);
         storage.removeItem(TOKEN_KEYS.refreshKey);
       } catch (error) {
-        console.error('Error clearing storage:', error);
+        authTokenLog.error('Error clearing storage:', error);
         success = false;
       }
     });
@@ -166,7 +168,7 @@ const clearAuthToken = () => {
     
     return success;
   } catch (error) {
-    console.error('Error in clearAuthToken:', error);
+    authTokenLog.error('Error in clearAuthToken:', error);
     return false;
   }
 };
@@ -195,7 +197,7 @@ const getAuthToken = () => {
       if (!authToken.expires || authToken.expires > Date.now()) {
         return authToken.value;
       }
-      console.log('[Auth] Cached token expired, checking other sources');
+      authTokenLog.log('[Auth] Cached token expired, checking other sources');
     }
 
     // Define all possible token sources with validation
@@ -207,7 +209,7 @@ const getAuthToken = () => {
             // Use the correct property name from TOKEN_KEYS
             return localStorage.getItem(TOKEN_KEYS.storageKey);
           } catch (error) {
-            console.warn('Error accessing localStorage:', error);
+            authTokenLog.warn('Error accessing localStorage:', error);
             return null;
           }
         },
@@ -220,7 +222,7 @@ const getAuthToken = () => {
             // Use the correct property name from TOKEN_KEYS
             return sessionStorage.getItem(TOKEN_KEYS.storageKey);
           } catch (error) {
-            console.warn('Error accessing sessionStorage:', error);
+            authTokenLog.warn('Error accessing sessionStorage:', error);
             return null;
           }
         },
@@ -235,7 +237,7 @@ const getAuthToken = () => {
             const match = document.cookie.match(new RegExp(`(^| )${TOKEN_KEYS.storageKey}=([^;]+)`));
             return match ? decodeURIComponent(match[2]) : null;
           } catch (error) {
-            console.warn('Error reading cookie:', error);
+            authTokenLog.warn('Error reading cookie:', error);
             return null;
           }
         },
@@ -258,24 +260,24 @@ const getAuthToken = () => {
               expires: expires?.getTime() || null
             };
             
-            console.log(`[Auth] Using token from ${source.name}`);
+            authTokenLog.log(`[Auth] Using token from ${source.name}`);
             return token;
           }
-          console.log(`[Auth] Token from ${source.name} is invalid or expired`);
+          authTokenLog.log(`[Auth] Token from ${source.name} is invalid or expired`);
         }
       } catch (error) {
-        console.warn(`Error getting token from ${source.name}:`, error);
+        authTokenLog.warn(`Error getting token from ${source.name}:`, error);
       }
     }
     
     // No valid token found in any source
     if (tokenOperations.getCount % 5 === 0) {
       // Only log every 5th attempt to reduce noise
-      console.log('[Auth] No valid authentication token found');
+      authTokenLog.log('[Auth] No valid authentication token found');
     }
     return '';
   } catch (error) {
-    console.error('Error in getAuthToken:', error);
+    authTokenLog.error('Error in getAuthToken:', error);
     return '';
   }
 };
@@ -293,7 +295,7 @@ export const validateToken = async () => {
     // For now, just check if it looks like a JWT
     return token.split('.').length === 3;
   } catch (error) {
-    console.error('Error validating token:', error);
+    authTokenLog.error('Error validating token:', error);
     return false;
   }
 };
