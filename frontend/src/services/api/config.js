@@ -1,11 +1,22 @@
+import logger from '../../utils/logger';
+const configLog = logger.ns('api:config');
+
 // Get API configuration from environment variables with fallbacks
 const getApiConfig = () => {
   // Use process.env for Node.js (Jest) or import.meta.env for Vite
-  const env = typeof process !== 'undefined' && process.env ? process.env : import.meta.env;
+  const env = (() => {
+    try {
+      if (typeof process !== 'undefined' && process.env) return process.env;
+      // eslint-disable-next-line no-undef
+      return import.meta.env;
+    } catch {
+      return {};
+    }
+  })();
   
   // Debug environment variables
   if (process.env.NODE_ENV !== 'test') {
-    console.log('Environment Variables:', {
+    configLog.info('Environment Variables:', {
       VITE_API_BASE_URL: env.VITE_API_BASE_URL,
       VITE_API_FALLBACK_URLS: env.VITE_API_FALLBACK_URLS,
       NODE_ENV: env.MODE || env.NODE_ENV,
@@ -15,7 +26,7 @@ const getApiConfig = () => {
   }
 
   // Default base URL - use relative URL for Vite proxy in production
-  const isDev = env.DEV || env.NODE_ENV === 'development';
+  const isDev = !!(env.DEV || env.NODE_ENV === 'development');
   const defaultBaseUrl = isDev ? 'http://localhost:8000' : '/api';
   
   // Get base URL from environment or use default
@@ -37,8 +48,8 @@ const getApiConfig = () => {
   let fallbackUrls = [...defaultFallbackUrls];
   
   try {
-    if (import.meta.env.VITE_API_FALLBACK_URLS) {
-      const parsed = JSON.parse(import.meta.env.VITE_API_FALLBACK_URLS);
+    if (env.VITE_API_FALLBACK_URLS) {
+      const parsed = JSON.parse(env.VITE_API_FALLBACK_URLS);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Filter out any empty strings and ensure unique URLs
         fallbackUrls = [...new Set([
@@ -48,13 +59,13 @@ const getApiConfig = () => {
       }
     }
   } catch (e) {
-    console.warn('Failed to parse VITE_API_FALLBACK_URLS, using default fallback URLs', e);
+    configLog.warn('Failed to parse VITE_API_FALLBACK_URLS, using default fallback URLs', e);
   }
 
   // Remove duplicates and empty strings
   fallbackUrls = [...new Set(fallbackUrls.filter(url => url && typeof url === 'string'))];
   
-  console.log('API Configuration:', { baseUrl, fallbackUrls });
+  configLog.info('API Configuration:', { baseUrl, fallbackUrls });
   return { baseUrl, fallbackUrls };
 };
 
@@ -86,11 +97,21 @@ export const ENDPOINTS = {
 
 // Get token configuration from environment variables with fallbacks
 const getTokenConfig = () => {
+  // Use process.env for Node.js (Jest) or import.meta.env for Vite
+  const env = (() => {
+    try {
+      if (typeof process !== 'undefined' && process.env) return process.env;
+      // eslint-disable-next-line no-undef
+      return import.meta.env;
+    } catch {
+      return {};
+    }
+  })();
   // Debug token config
-  console.log('Token Configuration Environment:', {
-    VITE_TOKEN_STORAGE_KEY: import.meta.env.VITE_TOKEN_STORAGE_KEY,
-    VITE_TOKEN_REFRESH_KEY: import.meta.env.VITE_TOKEN_REFRESH_KEY,
-    VITE_TOKEN_EXPIRES_IN: import.meta.env.VITE_TOKEN_EXPIRES_IN
+  configLog.info('Token Configuration Environment:', {
+    VITE_TOKEN_STORAGE_KEY: env.VITE_TOKEN_STORAGE_KEY,
+    VITE_TOKEN_REFRESH_KEY: env.VITE_TOKEN_REFRESH_KEY,
+    VITE_TOKEN_EXPIRES_IN: env.VITE_TOKEN_EXPIRES_IN
   });
 
   // Default token configuration
@@ -111,30 +132,41 @@ const getTokenConfig = () => {
 
   // Get token config from environment variables with fallbacks
   const config = {
-    storageKey: import.meta.env.VITE_TOKEN_STORAGE_KEY || defaultConfig.storageKey,
-    refreshKey: import.meta.env.VITE_TOKEN_REFRESH_KEY || defaultConfig.refreshKey,
-    expiresIn: parseInt(import.meta.env.VITE_TOKEN_EXPIRES_IN, 10) || defaultConfig.expiresIn,
-    storageType: import.meta.env.VITE_TOKEN_STORAGE_TYPE || defaultConfig.storageType,
-    autoRefresh: import.meta.env.VITE_TOKEN_AUTO_REFRESH 
-      ? import.meta.env.VITE_TOKEN_AUTO_REFRESH === 'true' 
+    storageKey: env.VITE_TOKEN_STORAGE_KEY || defaultConfig.storageKey,
+    refreshKey: env.VITE_TOKEN_REFRESH_KEY || defaultConfig.refreshKey,
+    expiresIn: parseInt(env.VITE_TOKEN_EXPIRES_IN, 10) || defaultConfig.expiresIn,
+    storageType: env.VITE_TOKEN_STORAGE_TYPE || defaultConfig.storageType,
+    autoRefresh: env.VITE_TOKEN_AUTO_REFRESH 
+      ? env.VITE_TOKEN_AUTO_REFRESH === 'true' 
       : defaultConfig.autoRefresh,
-    refreshThreshold: parseInt(import.meta.env.VITE_TOKEN_REFRESH_THRESHOLD, 10) || defaultConfig.refreshThreshold,
+    refreshThreshold: parseInt(env.VITE_TOKEN_REFRESH_THRESHOLD, 10) || defaultConfig.refreshThreshold,
     cookieOptions: {
       ...defaultConfig.cookieOptions,
-      secure: window.location.protocol === 'https:'
+      secure: (typeof window !== 'undefined' && window.location) ? (window.location.protocol === 'https:') : false
     }
   };
 
-  console.log('Token Configuration:', config);
+  configLog.info('Token Configuration:', config);
   return config;
 };
 
 // Get cache configuration from environment variables with fallbacks
-const getCacheConfig = () => ({
-  DEFAULT_TTL: parseInt(import.meta.env.VITE_CACHE_TTL || '300000', 10), // 5 minutes
-  CLEANUP_INTERVAL: parseInt(import.meta.env.VITE_CACHE_CLEANUP_INTERVAL || '60000', 10), // 1 minute
-  ENABLED: !(import.meta.env.VITE_CACHE_ENABLED === 'false')
-});
+const getCacheConfig = () => {
+  const env = (() => {
+    try {
+      if (typeof process !== 'undefined' && process.env) return process.env;
+      // eslint-disable-next-line no-undef
+      return import.meta.env;
+    } catch {
+      return {};
+    }
+  })();
+  return {
+    DEFAULT_TTL: parseInt(env.VITE_CACHE_TTL || '300000', 10), // 5 minutes
+    CLEANUP_INTERVAL: parseInt(env.VITE_CACHE_CLEANUP_INTERVAL || '60000', 10), // 1 minute
+    ENABLED: !(env.VITE_CACHE_ENABLED === 'false')
+  };
+};
 
 // Token storage keys
 export const TOKEN_KEYS = getTokenConfig();

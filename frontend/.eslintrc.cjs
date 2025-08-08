@@ -38,6 +38,17 @@ module.exports = {
     // Relax unused vars for now to avoid blocking the logging refactor; allow underscore-prefixed ignores
     'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
 
+    // Prevent misuse of centralized logger: instances do not have a .log() method
+    // This flags calls like fetchLog.log(...), apiFallbackLog.log(...), etc.
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector: "MemberExpression[property.name='log'][object.name=/.*Log$/]",
+        message:
+          "Logger instances created via logger.ns('<ns>') do not support .log(); use .info(), .warn(), or .error() instead.",
+      },
+    ],
+
     // Helpful React defaults
     'react/prop-types': 'off',
   },

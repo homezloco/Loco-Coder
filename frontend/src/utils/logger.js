@@ -1,9 +1,23 @@
-// Lightweight logging utility with namespaces, levels, and once-per-session helpers
-// Usage:
-//   import logger from '../utils/logger';
-//   const log = logger.ns('project');
-//   log.info('message');
-//   log.once('init', () => log.debug('only once'));
+/**
+ * Lightweight logging utility with namespaces, levels, and once-per-session helpers.
+ *
+ * Usage:
+ *   import logger from '../utils/logger';
+ *   const log = logger.ns('project');
+ *   log.info('message');
+ *   log.once('init', () => log.debug('only once'));
+ *
+ * Notes:
+ * - Do NOT call .log() on the returned namespace logger; supported methods are
+ *   .error(), .warn(), .info(), .debug(), .trace(), .group(), .groupCollapsed(), .groupEnd(), and .once().
+ * - Log output is filtered by the global level and namespace pattern.
+ *   Level can be set via logger.setLevel('error'|'warn'|'info'|'debug'|'trace').
+ *   Namespaces can be enabled via logger.enable('api:*,auth,ui:*'), supporting comma-separated glob patterns.
+ * - In production (Vite env), default level is 'warn'. In development, defaults to VITE_LOG_LEVEL or 'info'.
+ * - This module intentionally uses console.* internally and is whitelisted in ESLint rules.
+ *
+ * @module logger
+ */
 
 const win = typeof window !== 'undefined' ? window : {};
 
@@ -45,6 +59,21 @@ function shouldLog(ns, level) {
   return state.nsRegex.test(ns);
 }
 
+/**
+ * Create a namespaced logger instance.
+ * @param {string} ns - Namespace label (e.g., 'api', 'auth:token', 'ui:editor').
+ * @returns {{
+ *  error: (...args: any[]) => void,
+ *  warn: (...args: any[]) => void,
+ *  info: (...args: any[]) => void,
+ *  debug: (...args: any[]) => void,
+ *  trace: (...args: any[]) => void,
+ *  group: (label?: string, ...args: any[]) => void,
+ *  groupCollapsed: (label?: string, ...args: any[]) => void,
+ *  groupEnd: () => void,
+ *  once: (key: string, fn: () => void) => void,
+ * }} Namespaced logger API. Note: .log() is intentionally NOT provided.
+ */
 function makeNS(ns) {
   const prefix = `[${ns}]`;
   const call = (level, method, args) => {
@@ -72,6 +101,15 @@ function makeNS(ns) {
   return api;
 }
 
+/**
+ * Root logger controller.
+ * @typedef {Object} LoggerRoot
+ * @property {(ns: string) => ReturnType<typeof makeNS>} ns Create a namespaced logger instance.
+ * @property {(lvl: 'error'|'warn'|'info'|'debug'|'trace') => void} setLevel Set global log level.
+ * @property {(namespaces?: string) => void} enable Enable namespaces (comma-separated globs, e.g. 'api:*,auth').
+ * @property {('error'|'warn'|'info'|'debug'|'trace')} level Current global level.
+ * @property {string} namespaces Current enabled namespace pattern.
+ */
 const logger = {
   ns: makeNS,
   setLevel: (lvl) => { state.level = parseLevel(lvl); win.__LOG_LEVEL__ = state.level; },
