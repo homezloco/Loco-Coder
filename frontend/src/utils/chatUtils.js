@@ -5,6 +5,9 @@
 // Minimal implementation of chatUtils.js for debugging
 // This version removes complex error handling and IndexedDB to isolate issues
 
+import logger from './logger';
+const chatLog = logger('api:chat');
+
 /**
  * Enhanced API health check with multiple fallbacks for API connectivity
  * 
@@ -95,13 +98,13 @@ function sanitizeForStorage(value) {
           sanitized[key] = sanitizeForStorage(value[key]);
         }
       } catch (e) {
-        console.warn(`Error sanitizing property ${key}:`, e);
+        chatLog.warn(`Error sanitizing property ${key}:`, e);
         sanitized[key] = '[Error sanitizing value]';
       }
     }
     return sanitized;
   } catch (error) {
-    console.error('Error in sanitizeForStorage:', error);
+    chatLog.error('Error in sanitizeForStorage:', error);
     return '[Error sanitizing data]';
   }
 }
@@ -114,33 +117,33 @@ function sanitizeForStorage(value) {
  */
 export function saveChatHistory(history) {
   if (!history) {
-    console.warn('No history provided to saveChatHistory');
+    chatLog.warn('No history provided to saveChatHistory');
     return false;
   }
 
   // Sanitize history before saving
   let sanitizedHistory;
   try {
-    console.log('Sanitizing chat history...');
+    chatLog.log('Sanitizing chat history...');
     sanitizedHistory = Array.isArray(history) 
       ? history.map((msg, index) => {
           try {
             return sanitizeForStorage(msg);
           } catch (e) {
-            console.error(`Error sanitizing message at index ${index}:`, e);
+            chatLog.error(`Error sanitizing message at index ${index}:`, e);
             return { error: `[Error sanitizing message: ${e.message}]` };
           }
         })
       : [];
-    console.log('Sanitized chat history:', sanitizedHistory);
+    chatLog.log('Sanitized chat history:', sanitizedHistory);
   } catch (e) {
-    console.error('Critical error sanitizing chat history:', e);
+    chatLog.error('Critical error sanitizing chat history:', e);
     return false;
   }
 
   // First try IndexedDB
   try {
-    console.log('Attempting to save to IndexedDB...');
+    chatLog.log('Attempting to save to IndexedDB...');
     const request = window.indexedDB.open('chatHistoryDB', 1);
     
     request.onupgradeneeded = (event) => {
@@ -150,7 +153,7 @@ export function saveChatHistory(history) {
           db.createObjectStore('chatHistory', { keyPath: 'id' });
         }
       } catch (e) {
-        console.error('Error in IndexedDB upgrade:', e);
+        chatLog.error('Error in IndexedDB upgrade:', e);
       }
     };
     
@@ -164,51 +167,51 @@ export function saveChatHistory(history) {
         store.put({ id: 'latest', history: sanitizedHistory });
         
         transaction.oncomplete = () => {
-          console.log('Successfully saved chat history to IndexedDB');
+          chatLog.log('Successfully saved chat history to IndexedDB');
         };
         
         transaction.onerror = (e) => {
-          console.error('Transaction error in IndexedDB:', e);
+          chatLog.error('Transaction error in IndexedDB:', e);
           fallbackToLocalStorage(sanitizedHistory);
         };
       } catch (e) {
-        console.error('Error in IndexedDB transaction:', e);
+        chatLog.error('Error in IndexedDB transaction:', e);
         fallbackToLocalStorage(sanitizedHistory);
       }
     };
     
     request.onerror = (event) => {
-      console.error('Error opening IndexedDB:', event.target.error);
+      chatLog.error('Error opening IndexedDB:', event.target.error);
       fallbackToLocalStorage(sanitizedHistory);
     };
     
     return true;
   } catch (e) {
-    console.error('Critical error with IndexedDB:', e);
+    chatLog.error('Critical error with IndexedDB:', e);
     return fallbackToLocalStorage(sanitizedHistory);
   }
   
   function fallbackToLocalStorage(data) {
     try {
-      console.log('Falling back to localStorage...');
+      chatLog.log('Falling back to localStorage...');
       localStorage.setItem('chatHistory', JSON.stringify(data));
-      console.log('Successfully saved chat history to localStorage');
+      chatLog.log('Successfully saved chat history to localStorage');
       return true;
     } catch (e) {
-      console.error('Error saving to localStorage, falling back to sessionStorage:', e);
+      chatLog.error('Error saving to localStorage, falling back to sessionStorage:', e);
       try {
         sessionStorage.setItem('chatHistory', JSON.stringify(data));
-        console.log('Successfully saved chat history to sessionStorage');
+        chatLog.log('Successfully saved chat history to sessionStorage');
         return true;
       } catch (e) {
-        console.error('Could not save chat history anywhere');
+        chatLog.error('Could not save chat history anywhere');
         return false;
       }
     }
   }
   
   // If we get here, IndexedDB is not supported
-  console.error('IndexedDB not supported, falling back to localStorage');
+  chatLog.error('IndexedDB not supported, falling back to localStorage');
   return fallbackToLocalStorage(sanitizedHistory);
 }
 
@@ -236,12 +239,12 @@ export function saveUserSettings(settings) {
       store.put({ id: 'user', settings });
       
       transaction.oncomplete = () => {
-        console.log('Settings saved to IndexedDB');
+        chatLog.log('Settings saved to IndexedDB');
       };
     };
     
     request.onerror = () => {
-      console.error('Error saving settings to IndexedDB, falling back to localStorage');
+      chatLog.error('Error saving settings to IndexedDB, falling back to localStorage');
       // Fall back to localStorage
       try {
         // To prevent API keys from being stored in plain localStorage,
@@ -257,19 +260,19 @@ export function saveUserSettings(settings) {
         }
         
         localStorage.setItem('chatSettings', JSON.stringify(sanitizedSettings));
-        console.log('Sanitized settings saved to localStorage');
+        chatLog.log('Sanitized settings saved to localStorage');
       } catch (e) {
-        console.error('Error saving to localStorage, falling back to sessionStorage');
+        chatLog.error('Error saving to localStorage, falling back to sessionStorage');
         try {
           sessionStorage.setItem('chatSettings', JSON.stringify(settings));
-          console.log('Settings saved to sessionStorage');
+          chatLog.log('Settings saved to sessionStorage');
         } catch (e) {
-          console.error('Could not save settings anywhere');
+          chatLog.error('Could not save settings anywhere');
         }
       }
     };
   } catch (e) {
-    console.error('IndexedDB not supported, falling back to localStorage');
+    chatLog.error('IndexedDB not supported, falling back to localStorage');
     // Fall back like above
     try {
       const sanitizedSettings = { ...settings };
@@ -280,11 +283,11 @@ export function saveUserSettings(settings) {
       }
       localStorage.setItem('chatSettings', JSON.stringify(sanitizedSettings));
     } catch (e) {
-      console.error('Error saving to localStorage, falling back to sessionStorage');
+      chatLog.error('Error saving to localStorage, falling back to sessionStorage');
       try {
         sessionStorage.setItem('chatSettings', JSON.stringify(settings));
       } catch (e) {
-        console.error('Could not save settings anywhere');
+        chatLog.error('Could not save settings anywhere');
       }
     }
   }
@@ -315,7 +318,7 @@ export async function loadUserSettings() {
         
         getRequest.onsuccess = () => {
           if (getRequest.result) {
-            console.log('Settings loaded from IndexedDB');
+            chatLog.log('Settings loaded from IndexedDB');
             resolve(getRequest.result.settings);
           } else {
             // Try localStorage
@@ -324,18 +327,18 @@ export async function loadUserSettings() {
         };
         
         getRequest.onerror = () => {
-          console.error('Error loading settings from IndexedDB');
+          chatLog.error('Error loading settings from IndexedDB');
           tryLocalStorage();
         };
       };
       
       request.onerror = () => {
-        console.error('Error opening settings DB');
+        chatLog.error('Error opening settings DB');
         tryLocalStorage();
       };
       
     } catch (e) {
-      console.error('IndexedDB not supported');
+      chatLog.error('IndexedDB not supported');
       tryLocalStorage();
     }
     
@@ -343,7 +346,7 @@ export async function loadUserSettings() {
       try {
         const settings = localStorage.getItem('chatSettings');
         if (settings) {
-          console.log('Settings loaded from localStorage');
+          chatLog.log('Settings loaded from localStorage');
           const parsedSettings = JSON.parse(settings);
           
           // If we have sanitized settings (only provider names, not keys)
@@ -361,7 +364,7 @@ export async function loadUserSettings() {
           trySessionStorage();
         }
       } catch (e) {
-        console.error('Error loading from localStorage');
+        chatLog.error('Error loading from localStorage');
         trySessionStorage();
       }
     }
@@ -370,14 +373,14 @@ export async function loadUserSettings() {
       try {
         const settings = sessionStorage.getItem('chatSettings');
         if (settings) {
-          console.log('Settings loaded from sessionStorage');
+          chatLog.log('Settings loaded from sessionStorage');
           resolve(JSON.parse(settings));
         } else {
           // No settings found anywhere, return defaults
           resolve(getDefaultChatSettings());
         }
       } catch (e) {
-        console.error('Error loading from sessionStorage');
+        chatLog.error('Error loading from sessionStorage');
         resolve(getDefaultChatSettings());
       }
     }
@@ -422,7 +425,7 @@ export async function loadChatHistory() {
         request.onerror = () => reject(new Error('Could not open IndexedDB'));
       });
     } catch (idbError) {
-      console.warn('IndexedDB load failed, trying localStorage:', idbError);
+      chatLog.warn('IndexedDB load failed, trying localStorage:', idbError);
       
       // Try localStorage next
       const lsData = localStorage.getItem('chatHistory');
@@ -439,7 +442,7 @@ export async function loadChatHistory() {
       return null;
     }
   } catch (error) {
-    console.error('Error loading chat history:', error);
+    chatLog.error('Error loading chat history:', error);
     return null;
   }
-};
+}

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import logger from './utils/logger';
+const healthLog = logger('monitor:health');
 
 /**
  * SystemHealth component displays the status of all backend services
@@ -39,7 +41,7 @@ const SystemHealth = ({ apiUrl }) => {
         }));
       }
     } catch (error) {
-      console.error('Health check error:', error);
+      healthLog.error('Health check error:', error);
       
       // Determine which service is down based on error
       if (error.code === 'ECONNABORTED') {

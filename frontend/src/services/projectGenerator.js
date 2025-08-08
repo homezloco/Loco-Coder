@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateProjectName, generateProjectLogo } from './aiService';
+import logger from '../utils/logger';
+const genLog = logger('project:generator');
 
 // Cache for generated logos to avoid regenerating them
 const logoCache = new Map();
@@ -67,7 +69,7 @@ class ProjectGenerator {
       onProgress({ status: 'success', message: 'Project generated successfully!' });
       return project;
     } catch (error) {
-      console.error('Error generating project:', error);
+      genLog.error('Error generating project:', error);
       onProgress({ 
         status: 'error', 
         message: error.message || 'Failed to generate project',
@@ -329,7 +331,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
       plan.projectName = name;
       return name;
     } catch (error) {
-      console.error('Error generating project name:', error);
+      genLog.error('Error generating project name:', error);
       // Fallback to a default name
       return `project-${Date.now()}`;
     }
@@ -357,7 +359,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
       
       return logoData;
     } catch (error) {
-      console.error('Error generating project logo:', error);
+      genLog.error('Error generating project logo:', error);
       // Return a default logo
       return {
         type: 'svg',

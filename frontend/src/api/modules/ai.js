@@ -593,7 +593,7 @@ class AiService {
       return true; // Return true so the application continues to work
     }
   }
-};
+}
 
 // Bind all methods to maintain proper 'this' context
 const bindMethods = (obj) => {

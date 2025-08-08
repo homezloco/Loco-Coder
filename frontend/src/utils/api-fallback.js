@@ -10,6 +10,8 @@
  */
 
 import { STORES, getFromFallbackDB, saveToFallbackDB } from './database-fallback';
+import logger from './logger';
+const apiFallbackLog = logger('api:api-fallback');
 
 // Alias the functions for backward compatibility
 const getFromLocalStorage = (key) => getFromFallbackDB(STORES.API_QUEUE, key);
@@ -56,7 +58,7 @@ function recordFailure() {
   
   // Open the circuit if threshold reached
   if (circuitState.failures >= API_FALLBACK_CONFIG.circuitBreakerThreshold) {
-    console.warn('API circuit breaker opened - too many failures');
+    apiFallbackLog.warn('API circuit breaker opened - too many failures');
     circuitState.isOpen = true;
   }
 }
@@ -78,7 +80,7 @@ async function cacheResponse(url, response) {
     };
     await saveToLocalStorage(cacheKey, cacheData);
   } catch (error) {
-    console.error('Error caching API response:', error);
+    apiFallbackLog.error('Error caching API response:', error);
   }
 }
 
@@ -96,7 +98,7 @@ async function getCachedResponse(url) {
       }
     }
   } catch (error) {
-    console.error('Error getting cached API response:', error);
+    apiFallbackLog.error('Error getting cached API response:', error);
   }
   
   return null;
@@ -115,7 +117,7 @@ function queueRequest(method, url, data) {
   
   // Store queue in persistent storage
   saveToLocalStorage('api-queue', requestQueue)
-    .catch(err => console.error('Error storing API queue:', err));
+    .catch(err => apiFallbackLog.error('Error storing API queue:', err));
   
   return {
     queued: true,
@@ -130,7 +132,7 @@ export async function processQueue() {
   const storedQueue = await getFromLocalStorage('api-queue') || [];
   
   if (storedQueue.length > 0) {
-    console.log(`Processing ${storedQueue.length} queued API requests`);
+    apiFallbackLog.log(`Processing ${storedQueue.length} queued API requests`);
     
     // Process in order (FIFO)
     for (const request of [...storedQueue]) {
@@ -153,7 +155,7 @@ export async function processQueue() {
           requestQueue.splice(index, 1);
         }
       } catch (error) {
-        console.error('Error processing queued request:', error);
+        apiFallbackLog.error('Error processing queued request:', error);
         // Leave in queue to try again later
       }
     }
@@ -170,7 +172,7 @@ export async function apiFetch(url, options = {}) {
   
   // Check circuit breaker first
   if (isCircuitOpen()) {
-    console.warn('API circuit breaker is open, using fallback');
+    apiFallbackLog.warn('API circuit breaker is open, using fallback');
     
     // For GET requests, try to use cache
     if (isReadOperation) {
@@ -223,7 +225,7 @@ export async function apiFetch(url, options = {}) {
       };
     } catch (error) {
       lastError = error;
-      console.warn(`API attempt ${attempt + 1} failed:`, error);
+      apiFallbackLog.warn(`API attempt ${attempt + 1} failed:`, error);
     }
   }
   
@@ -253,13 +255,13 @@ export async function apiFetch(url, options = {}) {
 export function initApiFallbackSystem() {
   // Process queue when coming back online
   window.addEventListener('online', () => {
-    console.log('Network connection restored. Processing queued requests...');
+    apiFallbackLog.log('Network connection restored. Processing queued requests...');
     processQueue();
   });
   
   // Log when going offline
   window.addEventListener('offline', () => {
-    console.log('Network connection lost. Requests will be queued.');
+    apiFallbackLog.log('Network connection lost. Requests will be queued.');
   });
   
   // Initialize by loading any existing queue
@@ -268,12 +270,13 @@ export function initApiFallbackSystem() {
       const queue = await getFromLocalStorage('api-queue');
       if (queue && Array.isArray(queue)) {
         requestQueue.push(...queue);
-        console.log(`Loaded ${queue.length} pending API requests`);
+        apiFallbackLog.log(`Loaded ${queue.length} pending API requests`);
       }
     } catch (err) {
-      console.warn('Error loading API queue, starting with empty queue:', err);
+      apiFallbackLog.warn('Error loading API queue, starting with empty queue:', err);
       // Continue with empty queue if there's an error
-      requestQueue = [];
+      // Note: keep existing queue reference to avoid reassigning const
+      requestQueue.length = 0;
     }
   };
   
@@ -291,7 +294,7 @@ export function initApiFallbackSystem() {
     resetCircuitBreaker: () => {
       circuitState.failures = 0;
       circuitState.isOpen = false;
-      console.log('API circuit breaker manually reset');
+      apiFallbackLog.log('API circuit breaker manually reset');
     }
   };
 }

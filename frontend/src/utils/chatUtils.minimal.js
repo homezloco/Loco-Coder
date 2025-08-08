@@ -1,6 +1,9 @@
 // Minimal implementation of chatUtils.js for debugging
 // This version removes complex error handling and IndexedDB to isolate issues
 
+import logger from './logger';
+const chatLog = logger('api:chat');
+
 /**
  * Minimal sanitize function that just returns the input as-is
  */
@@ -8,7 +11,7 @@ function sanitizeForStorage(value) {
   try {
     return JSON.parse(JSON.stringify(value));
   } catch (e) {
-    console.warn('Sanitization failed, returning empty object');
+    chatLog.warn('Sanitization failed, returning empty object');
     return {};
   }
 }
@@ -22,7 +25,7 @@ export function saveChatHistory(history) {
     localStorage.setItem('chatHistory', JSON.stringify(data));
     return true;
   } catch (e) {
-    console.error('Error saving chat history:', e);
+    chatLog.error('Error saving chat history:', e);
     return false;
   }
 }
@@ -35,7 +38,7 @@ export function loadChatHistory() {
     const saved = localStorage.getItem('chatHistory');
     return saved ? JSON.parse(saved) : [];
   } catch (e) {
-    console.error('Error loading chat history:', e);
+    chatLog.error('Error loading chat history:', e);
     return [];
   }
 }
@@ -48,7 +51,7 @@ export function saveUserSettings(settings = {}) {
     localStorage.setItem('userSettings', JSON.stringify(settings));
     return true;
   } catch (e) {
-    console.error('Error saving user settings:', e);
+    chatLog.error('Error saving user settings:', e);
     return false;
   }
 }
@@ -58,7 +61,7 @@ export async function loadUserSettings() {
     const saved = localStorage.getItem('userSettings');
     return saved ? JSON.parse(saved) : {};
   } catch (e) {
-    console.error('Error loading user settings:', e);
+    chatLog.error('Error loading user settings:', e);
     return {};
   }
 }

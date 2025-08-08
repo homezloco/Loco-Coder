@@ -8,6 +8,8 @@ import { selectConsensusModels, processConsensusVotes } from './modelConfig';
  * @param {Array} availableModels - Array of available AI models
  * @returns {Object} Selected model and fallback options
  */
+import logger from './logger';
+const aiModelLog = logger('api:ai:model-manager');
 export async function selectAIModel(settings, isOffline, availableModels) {
   // Default to the active model from settings or fallback to first available
   const activeModelId = settings.activeModel || 'gpt-4-turbo';
@@ -249,7 +251,7 @@ async function performModelRouting(message, history, primaryModel, fallbackModel
       provider: primaryModel.provider
     };
   } catch (primaryError) {
-    console.error(`Error with primary model ${primaryModel.id}:`, primaryError);
+    aiModelLog.error(`Error with primary model ${primaryModel.id}:`, primaryError);
     
     // If no fallback models or fallbacks disabled, return the error
     if (!settings.useFallbackModels || !fallbackModels || fallbackModels.length === 0) {
@@ -263,7 +265,7 @@ async function performModelRouting(message, history, primaryModel, fallbackModel
     // Try each fallback model in sequence
     for (const fallbackModel of fallbackModels) {
       try {
-        console.log(`Trying fallback model: ${fallbackModel.id}`);
+        aiModelLog.log(`Trying fallback model: ${fallbackModel.id}`);
         const fallbackResponse = await callModelAPI(fallbackModel, message, history, settings);
         return {
           ...fallbackResponse,
@@ -274,7 +276,7 @@ async function performModelRouting(message, history, primaryModel, fallbackModel
           fallbackReason: `Primary model (${primaryModel.id}) error: ${primaryError.message}`
         };
       } catch (fallbackError) {
-        console.error(`Fallback model ${fallbackModel.id} error:`, fallbackError);
+        aiModelLog.error(`Fallback model ${fallbackModel.id} error:`, fallbackError);
         // Continue to next fallback
       }
     }
@@ -396,7 +398,7 @@ async function callOpenAIAPI(modelId, message, history, settings) {
       type: 'text'
     };
   } catch (error) {
-    console.error('OpenAI API error:', error);
+    aiModelLog.error('OpenAI API error:', error);
     throw error;
   }
 }
@@ -455,7 +457,7 @@ async function callAnthropicAPI(modelId, message, history, settings) {
       type: 'text'
     };
   } catch (error) {
-    console.error('Anthropic API error:', error);
+    aiModelLog.error('Anthropic API error:', error);
     throw error;
   }
 }
@@ -512,7 +514,7 @@ async function callLocalModelAPI(modelId, message, history, settings) {
       type: 'text'
     };
   } catch (error) {
-    console.error(`Local model ${modelId} API error:`, error);
+    aiModelLog.error(`Local model ${modelId} API error:`, error);
     throw error;
   }
 }

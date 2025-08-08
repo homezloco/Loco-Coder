@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './TemplateSelector.css';
+import logger from './utils/logger';
+const uiTemplateLog = logger('ui:template');
 
 /**
  * Template selector component for creating new projects from templates
@@ -150,6 +152,7 @@ const TemplateSelector = ({ apiUrl, onProjectCreate, onClose }) => {
     loadTemplates();
   }, []);
 
+
   // Load templates from API with fallback mechanism
   const loadTemplates = async () => {
     setLoading(true);
@@ -166,12 +169,12 @@ const TemplateSelector = ({ apiUrl, onProjectCreate, onClose }) => {
         }));
         setTemplates(templateArray);
       } else {
-        console.warn('Invalid template response, using fallback templates');
+        uiTemplateLog.warn('Invalid template response, using fallback templates');
         setTemplates(defaultTemplates);
         setError('Could not load templates from server, using fallback templates');
       }
     } catch (err) {
-      console.error('Failed to load templates:', err);
+      uiTemplateLog.error('Failed to load templates:', err);
       setTemplates(defaultTemplates);
       setError('Failed to load templates from server, using fallback templates');
     } finally {
@@ -212,7 +215,7 @@ const TemplateSelector = ({ apiUrl, onProjectCreate, onClose }) => {
         setError(response.data?.message || 'Failed to create project');
       }
     } catch (err) {
-      console.error('Error creating project:', err);
+      uiTemplateLog.error('Error creating project:', err);
       setError('Could not create project. Please try again.');
       
       // Fallback: Create project client-side
