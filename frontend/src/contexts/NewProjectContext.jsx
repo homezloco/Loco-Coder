@@ -4,6 +4,7 @@ import { useFeedback } from '../components/feedback/FeedbackContext';
 import { useApi } from './NewApiContext';
 import { useAuthContext } from '../hooks/useAuthContext';
 import { debounce, throttle } from '../utils/debounce';
+import logger from '../utils/logger';
 
 const ProjectContext = createContext();
 
@@ -19,6 +20,7 @@ export const ProjectProvider = ({ children }) => {
   const { isAuthenticated, token } = useAuthContext();
   const api = useApi();
   const navigate = useNavigate();
+  const log = logger.ns('project');
 
   // Get the current storage quota usage
   const getStorageUsage = useCallback(() => {
@@ -35,7 +37,8 @@ export const ProjectProvider = ({ children }) => {
   // Clean up old projects to free up space
   const cleanupOldProjects = useCallback((targetSizeMB = 0.5) => { // More aggressive default target
     try {
-      console.log(`[ProjectContext] Starting storage cleanup, target: ${targetSizeMB}MB`);
+      log.groupCollapsed('Storage cleanup', { targetSizeMB });
+      log.info(`Starting storage cleanup, target: ${targetSizeMB}MB`);
 
       // Get current projects index
       let projectsIndex = [];
@@ -43,12 +46,12 @@ export const ProjectProvider = ({ children }) => {
         const indexData = localStorage.getItem('projects_index');
         projectsIndex = indexData ? JSON.parse(indexData) : [];
       } catch (e) {
-        console.warn('Failed to parse projects index, resetting...');
+        log.warn('Failed to parse projects index, resetting...', e);
         localStorage.removeItem('projects_index');
       }
 
       if (!Array.isArray(projectsIndex) || projectsIndex.length === 0) {
-        console.log('[ProjectContext] No projects to clean up');
+        log.info('No projects to clean up');
         return;
       }
 
@@ -65,11 +68,11 @@ export const ProjectProvider = ({ children }) => {
       const storageUsage = getStorageUsage();
       const targetBytes = targetSizeMB * 1024 * 1024;
 
-      console.log(`[ProjectContext] Current storage: ${(storageUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(storageUsage.max / (1024 * 1024)).toFixed(2)}MB`);
+      log.info(`Current storage: ${(storageUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(storageUsage.max / (1024 * 1024)).toFixed(2)}MB`);
 
       // If we're already under the target, no need to clean up
       if (storageUsage.used < targetBytes) {
-        console.log('[ProjectContext] Storage usage is within limits, no cleanup needed');
+        log.info('Storage usage is within limits, no cleanup needed');
         return;
       }
 
@@ -90,10 +93,10 @@ export const ProjectProvider = ({ children }) => {
               localStorage.removeItem(projectKey);
               bytesFreed += projectData.length * 2; // Approximate size in bytes (2 bytes per char)
               projectsToRemove.push(project.id);
-              console.log(`[ProjectContext] Removed project ${project.id} (${(project.size / 1024).toFixed(2)}KB)`);
+              log.info(`Removed project ${project.id} (${(project.size / 1024).toFixed(2)}KB)`);
             }
           } catch (e) {
-            console.warn(`[ProjectContext] Failed to remove project ${project.id}:`, e);
+            log.warn(`Failed to remove project ${project.id}:`, e);
           }
         } else {
           projectsToKeep.push(project);
@@ -108,15 +111,15 @@ export const ProjectProvider = ({ children }) => {
 
         try {
           localStorage.setItem('projects_index', JSON.stringify(newIndex));
-          console.log(`[ProjectContext] Cleaned up ${projectsToRemove.length} projects, freed ${(bytesFreed / (1024 * 1024)).toFixed(2)}MB`);
+          log.info(`Cleaned up ${projectsToRemove.length} projects, freed ${(bytesFreed / (1024 * 1024)).toFixed(2)}MB`);
 
           // Check if we're still over quota
           const newUsage = getStorageUsage();
-          console.log(`[ProjectContext] New storage usage: ${(newUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(newUsage.max / (1024 * 1024)).toFixed(2)}MB`);
+          log.info(`New storage usage: ${(newUsage.used / (1024 * 1024)).toFixed(2)}MB / ${(newUsage.max / (1024 * 1024)).toFixed(2)}MB`);
 
           // If we're still over quota, try a more aggressive cleanup
           if (newUsage.percent > 90) {
-            console.warn('[ProjectContext] Still over 90% quota, performing aggressive cleanup');
+            log.warn('Still over 90% quota, performing aggressive cleanup');
 
             // First, clear all non-essential keys
             const keysToKeep = ['auth_token', 'user_profile', 'projects_index'];
@@ -126,9 +129,9 @@ export const ProjectProvider = ({ children }) => {
               if (!keysToKeep.includes(key) && !key.startsWith('p_')) {
                 try {
                   localStorage.removeItem(key);
-                  console.log(`[ProjectContext] Removed non-essential key: ${key}`);
+                  log.info(`Removed non-essential key: ${key}`);
                 } catch (e) {
-                  console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+                  log.warn(`Failed to remove key ${key}:`, e);
                 }
               }
             });
@@ -136,7 +139,7 @@ export const ProjectProvider = ({ children }) => {
             // If still over quota, clear old projects
             const currentUsage = getStorageUsage();
             if (currentUsage.percent > 90) {
-              console.warn('[ProjectContext] Still over 90%, clearing old projects');
+              log.warn('Still over 90%, clearing old projects');
 
               // Get all project keys and sort by last accessed (oldest first)
               const projectData = [];
@@ -157,11 +160,11 @@ export const ProjectProvider = ({ children }) => {
                       });
                     }
                   } catch (e) {
-                    console.warn(`[ProjectContext] Failed to process project ${project.id}:`, e);
+                    log.warn(`Failed to process project ${project.id}:`, e);
                   }
                 });
               } catch (e) {
-                console.warn('[ProjectContext] Failed to parse projects index:', e);
+                log.warn('Failed to parse projects index:', e);
               }
 
               // Sort by last accessed (oldest first), then by size (largest first)
@@ -185,47 +188,49 @@ export const ProjectProvider = ({ children }) => {
                     break;
                   }
                 } catch (e) {
-                  console.warn(`[ProjectContext] Failed to remove project ${project.id}:`, e);
+                  log.warn(`Failed to remove project ${project.id}:`, e);
                 }
               }
 
-              console.log(`[ProjectContext] Removed ${removedCount} projects during cleanup`);
+              log.info(`Removed ${removedCount} projects during cleanup`);
 
               // If still over quota after all that, clear everything except auth
               const finalUsage = getStorageUsage();
               if (finalUsage.percent > 90) {
-                console.warn('[ProjectContext] Still over 90% after project cleanup, clearing all non-essential data');
+                log.warn('Still over 90% after project cleanup, clearing all non-essential data');
                 allKeys.forEach(key => {
                   if (!keysToKeep.includes(key)) {
                     try {
                       localStorage.removeItem(key);
                     } catch (e) {
-                      console.warn(`[ProjectContext] Failed to remove key ${key}:`, e);
+                      log.warn(`Failed to remove key ${key}:`, e);
                     }
                   }
                 });
               }
             }
 
-            console.log('[ProjectContext] Aggressive cleanup completed');
+            log.info('Aggressive cleanup completed');
           }
         } catch (e) {
-          console.error('[ProjectContext] Failed to update projects index after cleanup:', e);
+          log.error('Failed to update projects index after cleanup:', e);
           // If we can't update the index, clear everything to avoid inconsistency
           localStorage.clear();
         }
       } else {
-        console.log('[ProjectContext] No projects could be removed, clearing all storage');
+        log.info('No projects could be removed, clearing all storage');
         localStorage.clear();
       }
     } catch (e) {
-      console.error('Fatal error during storage cleanup:', e);
+      log.error('Fatal error during storage cleanup:', e);
       // Last resort: clear everything
       try {
         localStorage.clear();
       } catch (clearError) {
-        console.error('Failed to clear localStorage:', clearError);
+        log.error('Failed to clear localStorage:', clearError);
       }
+    } finally {
+      log.groupEnd();
     }
   }, [getStorageUsage]);
 
@@ -243,12 +248,12 @@ export const ProjectProvider = ({ children }) => {
         
         // Use cache if it's less than 5 minutes old
         if (cacheAge < 5 * 60 * 1000 && Array.isArray(projects)) {
-          console.log(`[ProjectContext] Using cached projects (${projects.length} items, ${Math.round(cacheAge / 1000)}s old)`);
+          log.debug(`Using cached projects (${projects.length} items, ${Math.round(cacheAge / 1000)}s old)`);
           return projects;
         }
       }
     } catch (e) {
-      console.warn('[ProjectContext] Failed to load projects from cache:', e);
+      log.warn('Failed to load projects from cache:', e);
     }
     
     return null;
@@ -257,7 +262,7 @@ export const ProjectProvider = ({ children }) => {
   // Implementation of loadProjects with retry logic
   const loadProjectsImpl = useCallback(async (retryCount = 0) => {
     try {
-      console.log(`[ProjectContext] Loading projects (attempt ${retryCount + 1})...`);
+      log.info(`Loading projects (attempt ${retryCount + 1})...`);
       
       // Check cache first
       if (retryCount === 0) {
@@ -271,7 +276,7 @@ export const ProjectProvider = ({ children }) => {
       
       // If not authenticated, try to load from local storage directly
       if (!isAuthenticated) {
-        console.log('[ProjectContext] Not authenticated, loading from local storage only');
+        log.info('Not authenticated, loading from local storage only');
         
         try {
           // Try to load projects from localStorage directly
@@ -279,7 +284,7 @@ export const ProjectProvider = ({ children }) => {
           if (projectsIndex) {
             const parsedIndex = JSON.parse(projectsIndex);
             if (Array.isArray(parsedIndex) && parsedIndex.length > 0) {
-              console.log(`[ProjectContext] Found ${parsedIndex.length} projects in local storage index`);
+              log.debug(`Found ${parsedIndex.length} projects in local storage index`);
               
               // Load each project from localStorage
               const localProjects = [];
@@ -292,12 +297,12 @@ export const ProjectProvider = ({ children }) => {
                     localProjects.push(project);
                   }
                 } catch (e) {
-                  console.warn(`[ProjectContext] Failed to load project ${projectInfo.id}:`, e);
+                  log.warn(`Failed to load project ${projectInfo.id}:`, e);
                 }
               }
               
               if (localProjects.length > 0) {
-                console.log(`[ProjectContext] Loaded ${localProjects.length} projects from local storage`);
+                log.info(`Loaded ${localProjects.length} projects from local storage`);
                 setProjects(localProjects);
                 setLoading(false);
                 return localProjects;
@@ -305,7 +310,7 @@ export const ProjectProvider = ({ children }) => {
             }
           }
         } catch (e) {
-          console.warn('[ProjectContext] Failed to load projects from local storage:', e);
+          log.warn('Failed to load projects from local storage:', e);
         }
         
         setProjects([]);
@@ -316,7 +321,7 @@ export const ProjectProvider = ({ children }) => {
       const fetchedProjects = await api.projects.getProjects();
       
       if (Array.isArray(fetchedProjects)) {
-        console.log(`[ProjectContext] Loaded ${fetchedProjects.length} projects`);
+        log.info(`Loaded ${fetchedProjects.length} projects`);
         
         // Update state
         setProjects(fetchedProjects);
@@ -326,7 +331,7 @@ export const ProjectProvider = ({ children }) => {
           localStorage.setItem('projects', JSON.stringify(fetchedProjects));
           localStorage.setItem('projects_last_fetch', Date.now().toString());
         } catch (storageError) {
-          console.warn('[ProjectContext] Failed to cache projects in localStorage', storageError);
+          log.warn('Failed to cache projects in localStorage', storageError);
           // If we hit storage quota, clean up
           cleanupOldProjects(1); // More aggressive cleanup
         }
@@ -336,7 +341,7 @@ export const ProjectProvider = ({ children }) => {
         throw new Error('Invalid response format');
       }
     } catch (error) {
-      console.error('[ProjectContext] Failed to load projects:', error);
+      log.error('Failed to load projects:', error);
       
       // Only set error state on final retry
       if (retryCount >= 2) {
@@ -347,7 +352,7 @@ export const ProjectProvider = ({ children }) => {
       
       // Retry with exponential backoff
       const delay = Math.pow(2, retryCount) * 1000;
-      console.log(`[ProjectContext] Retrying in ${delay}ms...`);
+      log.info(`Retrying in ${delay}ms...`);
       
       return new Promise(resolve => {
         setTimeout(() => {
@@ -374,11 +379,11 @@ export const ProjectProvider = ({ children }) => {
   const loadProjects = useCallback(
     throttle(async () => {
       if (!isAuthenticated) {
-        console.log('[ProjectContext] Not authenticated, trying local storage fallback');
+        log.info('Not authenticated, trying local storage fallback');
         // Try to load projects from local storage
         const cachedProjects = loadProjectsFromStorage();
         if (cachedProjects && cachedProjects.length > 0) {
-          console.log(`[ProjectContext] Loaded ${cachedProjects.length} projects from local storage`);
+          log.info(`Loaded ${cachedProjects.length} projects from local storage`);
           setProjects(cachedProjects);
           return cachedProjects;
         }
@@ -389,7 +394,7 @@ export const ProjectProvider = ({ children }) => {
           if (projectsIndex) {
             const parsedIndex = JSON.parse(projectsIndex);
             if (Array.isArray(parsedIndex) && parsedIndex.length > 0) {
-              console.log(`[ProjectContext] Found ${parsedIndex.length} projects in local storage index`);
+              log.debug(`Found ${parsedIndex.length} projects in local storage index`);
               
               // Load each project from localStorage
               const localProjects = [];
@@ -402,19 +407,19 @@ export const ProjectProvider = ({ children }) => {
                     localProjects.push(project);
                   }
                 } catch (e) {
-                  console.warn(`[ProjectContext] Failed to load project ${projectInfo.id}:`, e);
+                  log.warn(`Failed to load project ${projectInfo.id}:`, e);
                 }
               }
               
               if (localProjects.length > 0) {
-                console.log(`[ProjectContext] Loaded ${localProjects.length} projects from local storage`);
+                log.info(`Loaded ${localProjects.length} projects from local storage`);
                 setProjects(localProjects);
                 return localProjects;
               }
             }
           }
         } catch (e) {
-          console.warn('[ProjectContext] Failed to load projects from local storage:', e);
+          log.warn('Failed to load projects from local storage:', e);
         }
         
         return [];
@@ -430,7 +435,7 @@ export const ProjectProvider = ({ children }) => {
 
   // Add effect to load projects when authentication state changes
   useEffect(() => {
-    console.log('[ProjectContext] Authentication state changed, isAuthenticated:', isAuthenticated);
+    log.debug('Auth state changed, isAuthenticated:', isAuthenticated);
     // Always try to load projects, our loadProjects function now handles both authenticated and unauthenticated states
     loadProjects();
   }, [isAuthenticated, loadProjects]);
@@ -438,20 +443,50 @@ export const ProjectProvider = ({ children }) => {
   // Load a single project
   const loadProject = useCallback(async (projectId) => {
     if (!isAuthenticated) {
-      showErrorToast('You must be logged in to view this project');
-      navigate('/login');
-      return null;
+      // Offline/unauthenticated fallback: load from localStorage
+      try {
+        log.info('Unauthenticated: attempting local load for project', projectId);
+        const local = localStorage.getItem(`p_${projectId}`);
+        if (local) {
+          const project = JSON.parse(local);
+          setCurrentProject(project);
+          // Ensure it's present in projects list as well
+          setProjects((prev) => {
+            const exists = prev.some((p) => p.id === projectId);
+            return exists ? prev : [project, ...prev];
+          });
+          try {
+            // Update last accessed in index
+            const index = JSON.parse(localStorage.getItem('projects_index') || '[]');
+            const now = new Date().toISOString();
+            const updatedIndex = Array.isArray(index)
+              ? index.map((p) => (p.id === projectId ? { ...p, lastAccessed: now } : p))
+              : [];
+            localStorage.setItem('projects_index', JSON.stringify(updatedIndex));
+          } catch (e) {
+            log.warn('Failed to update projects_index lastAccessed', e);
+          }
+          showSuccessToast('Opened local project');
+          return project;
+        }
+        showErrorToast('Project not found locally');
+        return null;
+      } catch (e) {
+        log.warn('Local project load failed', e);
+        showErrorToast('Failed to open local project');
+        return null;
+      }
     }
     
     try {
       setLoading(true);
       setError(null);
       
-      console.log(`[ProjectContext] Loading project ${projectId}...`);
+      log.info(`Loading project ${projectId}...`);
       const project = await api.projects.getProject(projectId);
       
       if (project) {
-        console.log(`[ProjectContext] Successfully loaded project ${projectId}`);
+        log.info(`Successfully loaded project ${projectId}`);
         setCurrentProject(project);
         
         // Update cache
@@ -486,7 +521,7 @@ export const ProjectProvider = ({ children }) => {
           
           localStorage.setItem('projects_index', JSON.stringify(projectsIndex));
         } catch (storageError) {
-          console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+          log.warn('Failed to update localStorage cache', storageError);
           // If we hit storage quota, clean up
           cleanupOldProjects(1); // More aggressive cleanup
         }
@@ -496,7 +531,7 @@ export const ProjectProvider = ({ children }) => {
       
       throw new Error('Project not found');
     } catch (error) {
-      console.error(`[ProjectContext] Failed to load project ${projectId}`, error);
+      log.error(`Failed to load project ${projectId}`, error);
       setError(error);
       showErrorToast(`Failed to load project: ${error.message}`);
       return null;
@@ -514,13 +549,13 @@ export const ProjectProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
-      console.log('[ProjectContext] Creating new project...');
+      log.info('Creating new project...');
       
       let newProject;
       
       if (useLocalFallback) {
         // Create a local project when not authenticated
-        console.log('[ProjectContext] Using local fallback for project creation');
+        log.info('Using local fallback for project creation');
         newProject = {
           ...projectData,
           id: `local_${Date.now()}`,
@@ -534,7 +569,7 @@ export const ProjectProvider = ({ children }) => {
       }
       
       if (newProject) {
-        console.log(`[ProjectContext] Successfully created project ${newProject.id}`);
+        log.info(`Successfully created project ${newProject.id}`);
         
         // Update local state
         setProjects(prevProjects => [...prevProjects, newProject]);
@@ -559,7 +594,7 @@ export const ProjectProvider = ({ children }) => {
           });
           localStorage.setItem('projects_index', JSON.stringify(projectsIndex));
         } catch (storageError) {
-          console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+          log.warn('Failed to update localStorage cache', storageError);
           // If we hit storage quota, clean up
           cleanupOldProjects(1); // More aggressive cleanup
         }
@@ -570,7 +605,7 @@ export const ProjectProvider = ({ children }) => {
       
       throw new Error('Failed to create project');
     } catch (error) {
-      console.error('[ProjectContext] Failed to create project', error);
+      log.error('Failed to create project', error);
       setError(error);
       showErrorToast(`Failed to create project: ${error.message}`);
       return null;
@@ -591,11 +626,11 @@ export const ProjectProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
-      console.log(`[ProjectContext] Updating project ${projectId}...`);
+      log.info(`Updating project ${projectId}...`);
       const updatedProject = await api.projects.updateProject(projectId, projectData);
       
       if (updatedProject) {
-        console.log(`[ProjectContext] Successfully updated project ${projectId}`);
+        log.info(`Successfully updated project ${projectId}`);
         
         // Update local state
         setProjects(prevProjects => prevProjects.map(p => 
@@ -615,7 +650,7 @@ export const ProjectProvider = ({ children }) => {
           localStorage.setItem('projects', JSON.stringify(updatedProjects));
           localStorage.setItem('projects_last_fetch', Date.now().toString());
         } catch (storageError) {
-          console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+          log.warn('Failed to update localStorage cache', storageError);
         }
         
         showSuccessToast('Project updated successfully');
@@ -624,7 +659,7 @@ export const ProjectProvider = ({ children }) => {
       
       throw new Error('Failed to update project');
     } catch (error) {
-      console.error(`[ProjectContext] Failed to update project ${projectId}`, error);
+      log.error(`Failed to update project ${projectId}`, error);
       setError(error);
       showErrorToast(`Failed to update project: ${error.message}`);
       throw error;
@@ -649,11 +684,11 @@ export const ProjectProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
-      console.log(`[ProjectContext] Deleting project ${projectId}...`);
+      log.info(`Deleting project ${projectId}...`);
       const success = await api.projects.deleteProject(projectId);
       
       if (success) {
-        console.log(`[ProjectContext] Successfully deleted project ${projectId}`);
+        log.info(`Successfully deleted project ${projectId}`);
         
         // Update local state
         setProjects(prevProjects => prevProjects.filter(p => p.id !== projectId));
@@ -669,7 +704,7 @@ export const ProjectProvider = ({ children }) => {
           localStorage.setItem('projects', JSON.stringify(updatedProjects));
           localStorage.setItem('projects_last_fetch', Date.now().toString());
         } catch (storageError) {
-          console.warn('[ProjectContext] Failed to update localStorage cache', storageError);
+          log.warn('Failed to update localStorage cache', storageError);
         }
         
         showSuccessToast('Project deleted successfully');
@@ -678,7 +713,7 @@ export const ProjectProvider = ({ children }) => {
       
       throw new Error('Failed to delete project');
     } catch (error) {
-      console.error(`[ProjectContext] Failed to delete project ${projectId}`, error);
+      log.error(`Failed to delete project ${projectId}`, error);
       setError(error);
       showErrorToast(`Failed to delete project: ${error.message}`);
       throw error;

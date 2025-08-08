@@ -3,6 +3,9 @@
  * Implements robust fallback execution for when backend services are unavailable
  */
 
+import logger from './logger';
+const log = logger.ns('api:ai:pyodide');
+
 // Track pyodide loading state
 let pyodideReadyPromise = null;
 let pyodideInstance = null;
@@ -30,7 +33,7 @@ export async function loadPyodide() {
       // Try each CDN URL until one works
       for (const cdnUrl of PYODIDE_CDN_URLS) {
         try {
-          console.log(`Attempting to load Pyodide from ${cdnUrl}`);
+          log.info(`Attempting to load Pyodide from ${cdnUrl}`);
           
           // Dynamically load the Pyodide script
           await new Promise((resolve, reject) => {
@@ -47,15 +50,15 @@ export async function loadPyodide() {
           }
           
           // Initialize Pyodide
-          console.log('Loading Pyodide environment...');
+          log.info('Loading Pyodide environment...');
           const pyodide = await loadPyodide({
             indexURL: cdnUrl.substring(0, cdnUrl.lastIndexOf('/')),
           });
           
-          console.log('Pyodide loaded successfully');
+          log.info('Pyodide loaded successfully');
           return pyodide;
         } catch (error) {
-          console.warn(`Failed to load Pyodide from ${cdnUrl}:`, error);
+          log.warn(`Failed to load Pyodide from ${cdnUrl}:`, error);
           loadErrors.push({ url: cdnUrl, error });
         }
       }
@@ -70,13 +73,13 @@ export async function loadPyodide() {
     pyodideReadyPromise
       .then(pyodide => {
         pyodideInstance = pyodide;
-        console.log('Pyodide initialized and ready');
+        log.info('Pyodide initialized and ready');
         
         // Pre-import commonly used modules
         return pyodide.loadPackagesFromImports('import sys, io, math, json, re');
       })
       .catch(error => {
-        console.error('Pyodide initialization failed:', error);
+        log.error('Pyodide initialization failed:', error);
         pyodideLoadError = error;
         pyodideReadyPromise = null; // Allow retrying later
       });
@@ -177,7 +180,7 @@ export async function installPythonPackage(packageName) {
     
     return true;
   } catch (error) {
-    console.error(`Failed to install Python package ${packageName}:`, error);
+    log.error(`Failed to install Python package ${packageName}:`, error);
     return false;
   }
 }

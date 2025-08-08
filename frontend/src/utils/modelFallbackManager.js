@@ -1,6 +1,9 @@
 // modelFallbackManager.js - Robust AI model fallback system with cascading retry logic
 
 import api from '../api/index.js';
+import logger from './logger';
+
+const log = logger.ns('api:ai:fallback');
 
 /**
  * ModelFallbackManager provides a complete system for handling AI model failures
@@ -38,7 +41,7 @@ class ModelFallbackManager {
     this.loadUserPriorityOrder();
     
     // Initial log of available models
-    console.log('Model fallback manager initialized with models:', 
+    log.info('Model fallback manager initialized with models:', 
       [...this.getAllModels().map(m => m.id)]);
   }
   
@@ -52,11 +55,11 @@ class ModelFallbackManager {
         const settings = JSON.parse(savedSettings);
         if (settings.modelPriorityOrder && Array.isArray(settings.modelPriorityOrder)) {
           this.modelConfig.userPriorityOrder = settings.modelPriorityOrder;
-          console.log('Loaded user model priority order:', this.modelConfig.userPriorityOrder);
+          log.info('Loaded user model priority order:', this.modelConfig.userPriorityOrder);
         }
       }
     } catch (err) {
-      console.warn('Failed to load user model priority order:', err);
+      log.warn('Failed to load user model priority order:', err);
     }
   }
 
@@ -150,7 +153,7 @@ class ModelFallbackManager {
     this.modelStatus.set(modelId, status);
     
     // Log status changes for debugging
-    console.log(`Model ${modelId} status updated: healthy=${status.healthy}, failures=${status.failureCount}, successes=${status.successCount}`);
+    log.debug(`Model ${modelId} status updated: healthy=${status.healthy}, failures=${status.failureCount}, successes=${status.successCount}`);
   }
 
   /**
@@ -227,7 +230,7 @@ class ModelFallbackManager {
     let lastError = null;
     for (const model of availableModels) {
       try {
-        console.log(`Trying model: ${model.id} (${model.provider})`);
+        log.info(`Trying model: ${model.id} (${model.provider})`);
         
         // Add exponential backoff for retries
         const modelStatus = this.modelStatus.get(model.id);
@@ -238,7 +241,7 @@ class ModelFallbackManager {
             this.modelConfig.retryDelay * Math.pow(2, retryCount - 1),
             10000 // Max 10 seconds
           );
-          console.log(`Backing off for ${delay}ms before retrying ${model.id}`);
+          log.info(`Backing off for ${delay}ms before retrying ${model.id}`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
@@ -264,7 +267,7 @@ class ModelFallbackManager {
           }
         };
       } catch (error) {
-        console.error(`Error with model ${model.id}:`, error);
+        log.error(`Error with model ${model.id}:`, error);
         this.updateModelStatus(model.id, false, error);
         lastError = error;
         // Continue to next model
@@ -284,7 +287,7 @@ class ModelFallbackManager {
   recordSuccess(modelId, response = {}, responseTime = 0) {
     if (!modelId) return;
     
-    console.log(`Model ${modelId} API call succeeded in ${responseTime}ms`);    
+    log.info(`Model ${modelId} API call succeeded in ${responseTime}ms`);    
     this.updateModelStatus(modelId, true, null, responseTime);
     
     // Update active model
@@ -301,7 +304,7 @@ class ModelFallbackManager {
       localStorage.setItem('lastActiveModel', modelId);
       localStorage.setItem('lastUsedModels', JSON.stringify(this.lastUsedModels));
     } catch (e) {
-      console.warn('Failed to save active model to localStorage:', e);
+      log.warn('Failed to save active model to localStorage:', e);
     }
   }
 
@@ -430,7 +433,7 @@ class ModelFallbackManager {
       this.modelStatus.set(modelId, status);
     });
     
-    console.log('All model health statuses have been reset');
+    log.info('All model health statuses have been reset');
     
     // Force refresh active model status
     if (this.activeModel) {
@@ -449,7 +452,7 @@ class ModelFallbackManager {
         this.lastUsedModels = JSON.parse(savedUsedModels);
       }
     } catch (e) {
-      console.warn('Failed to restore active model data:', e);
+      log.warn('Failed to restore active model data:', e);
     }
   }
 }

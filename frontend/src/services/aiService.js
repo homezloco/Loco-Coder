@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import logger from '../utils/logger';
 
 /**
  * Generate a creative project name based on the project description
@@ -37,7 +38,7 @@ export const generateProjectName = async (description) => {
     
     return name;
   } catch (error) {
-    console.error('Error generating project name:', error);
+    logger.ns('api:ai').error('Error generating project name', { error });
     // Fallback to a simple generated name
     return `Project-${uuidv4().substring(0, 8)}`;
   }
@@ -55,7 +56,7 @@ export const generateProjectPlan = async (projectIdea, templateId) => {
     
     // Fallback mechanism in case AI service is unavailable
     if (!aiService || aiService.isFallback) {
-      console.warn('AI service not available for project plan generation, using fallback');
+      logger.ns('api:ai').warn('AI service not available for project plan generation, using fallback');
       return generateFallbackProjectPlan(projectIdea, templateId);
     }
     
@@ -168,7 +169,7 @@ export const generateProjectPlan = async (projectIdea, templateId) => {
       planData.tags = planData.tags || [];
       
     } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
+      logger.ns('api:ai').error('Error parsing AI response', { error: parseError });
       throw new Error('Failed to parse AI-generated project plan');
     }
     
@@ -177,7 +178,7 @@ export const generateProjectPlan = async (projectIdea, templateId) => {
       const logo = await generateProjectLogo(planData.projectName, planData.projectDescription, aiService);
       planData.logo = logo;
     } catch (logoError) {
-      console.warn('Error generating logo:', logoError);
+      logger.ns('api:ai').warn('Error generating logo', { error: logoError });
       // Use fallback logo
       planData.logo = {
         type: 'svg',
@@ -188,7 +189,7 @@ export const generateProjectPlan = async (projectIdea, templateId) => {
     
     return planData;
   } catch (error) {
-    console.error('Error generating project plan:', error);
+    logger.ns('api:ai').error('Error generating project plan', { error });
     // Use fallback plan
     return generateFallbackProjectPlan(projectIdea, templateId);
   }
@@ -366,7 +367,7 @@ const generateFallbackProjectPlan = (projectIdea, templateId) => {
 export const generateProjectLogo = async (projectName, description, aiService) => {
   // Early return with fallback if no AI service is provided
   if (!aiService) {
-    console.warn('AI service not provided for logo generation, using fallback');
+    logger.ns('api:ai').warn('AI service not provided for logo generation, using fallback');
     return {
       type: 'svg',
       content: generateFallbackSvg(projectName),
@@ -378,7 +379,7 @@ export const generateProjectLogo = async (projectName, description, aiService) =
   
   // Check if this is a fallback AI service implementation
   if (aiService.isFallback) {
-    console.log('Using fallback AI service for logo generation');
+    logger.ns('api:ai').info('Using fallback AI service for logo generation');
     return {
       type: 'svg',
       content: generateFallbackSvg(projectName),

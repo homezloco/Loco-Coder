@@ -4,6 +4,8 @@
  */
 
 import { canExecuteInBrowser, canExecuteOnBackend } from './language-utils';
+import logger from './logger';
+const log = logger.ns('api:ai:exec');
 
 // API client import (using dynamic import to avoid circular dependencies)
 let apiClient = null;
@@ -42,9 +44,9 @@ export async function executeCode(code, language) {
         }
         
         // If we get here, backend execution failed but didn't throw an error
-        console.warn(`Backend execution for ${language} returned unsuccessful result`);
+        log.warn(`Backend execution for ${language} returned unsuccessful result`);
       } catch (error) {
-        console.warn(`Backend execution for ${language} failed:`, error);
+        log.warn(`Backend execution for ${language} failed:`, error);
         // Fall through to next strategy
       }
     }
@@ -59,7 +61,7 @@ export async function executeCode(code, language) {
           method: 'browser',
         };
       } catch (error) {
-        console.warn(`Browser execution for ${language} failed:`, error);
+        log.warn(`Browser execution for ${language} failed:`, error);
         // Fall through to next strategy
       }
     }
@@ -74,7 +76,7 @@ export async function executeCode(code, language) {
       };
     } catch (error) {
       // Even validation failed
-      console.error(`All execution strategies for ${language} failed:`, error);
+      log.error(`All execution strategies for ${language} failed:`, error);
       return {
         output: '',
         error: `Unable to execute ${language} code: ${error.message}`,
@@ -85,7 +87,7 @@ export async function executeCode(code, language) {
     }
   } catch (error) {
     // Global catch for any unexpected errors
-    console.error('Unexpected error during code execution:', error);
+    log.error('Unexpected error during code execution:', error);
     return {
       output: '',
       error: `Execution error: ${error.message}`,

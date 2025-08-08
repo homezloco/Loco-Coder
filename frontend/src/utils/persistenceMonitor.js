@@ -5,6 +5,9 @@
  * tracking performance, availability and success rates across different storage methods.
  */
 
+import logger from './logger';
+const log = logger.ns('monitor:persistence');
+
 // Storage for statistics
 let stats = {
   api: {
@@ -102,7 +105,7 @@ export const recordOperationTime = (operationName, timeMs) => {
   // Store operation timing in stats if needed
   // For now just log it if it's taking too long
   if (timeMs > 500) {
-    console.log(`⏱️ Performance: ${operationName} took ${timeMs.toFixed(2)}ms`);
+    log.warn(`⏱️ Performance: ${operationName} took ${timeMs.toFixed(2)}ms`);
   }
 };
 

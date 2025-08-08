@@ -4,6 +4,33 @@ import { TOKEN_KEYS } from '../config';
 let authToken = null;
 let refreshToken = null;
 let tokenExpiration = null;
+const DEV = !!(import.meta && import.meta.env && import.meta.env.DEV);
+
+// Internal helpers
+const hasCookie = (name) => {
+  try {
+    return document?.cookie?.split('; ').some(c => c.startsWith(`${name}=`));
+  } catch {
+    return false;
+  }
+};
+
+const isAuthDataInStorage = () => {
+  try {
+    const ls = typeof localStorage !== 'undefined' ? localStorage : null;
+    const ss = typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+    const inLS = ls && (ls.getItem(TOKEN_KEYS.storageKey) || ls.getItem(TOKEN_KEYS.refreshKey) || ls.getItem(`${TOKEN_KEYS.storageKey}_expires`));
+    const inSS = ss && (ss.getItem(TOKEN_KEYS.storageKey) || ss.getItem(TOKEN_KEYS.refreshKey) || ss.getItem(`${TOKEN_KEYS.storageKey}_expires`));
+    const inCookies = hasCookie(TOKEN_KEYS.storageKey) || hasCookie(TOKEN_KEYS.refreshKey);
+    return !!(inLS || inSS || inCookies);
+  } catch {
+    return false;
+  }
+};
+
+const isAuthDataPresent = () => {
+  return !!(authToken || refreshToken || tokenExpiration || isAuthDataInStorage());
+};
 
 /**
  * Get the current authentication token
@@ -75,6 +102,15 @@ export const storeToken = (token, refreshTokenValue = null, expiresIn = null) =>
  * Clear all authentication data
  */
 export const clearAuthData = () => {
+  // No-op guard to prevent repeated clears/log spam
+  if (!isAuthDataPresent()) {
+    if (DEV && typeof window !== 'undefined' && !window.__TOKEN_CLEAR_NOOP_LOGGED__) {
+      console.log('[Token] clearAuthData: nothing to clear (noop)');
+      window.__TOKEN_CLEAR_NOOP_LOGGED__ = true;
+    }
+    return;
+  }
+
   authToken = null;
   refreshToken = null;
   tokenExpiration = null;
@@ -96,6 +132,21 @@ export const clearAuthData = () => {
     console.warn('Failed to clear auth data:', e);
   }
 };
+
+// Debounced clear to coalesce bursts (e.g., storage event storms)
+export const debouncedClearAuthData = (() => {
+  let timer = null;
+  return (wait = 250) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        clearAuthData();
+      } finally {
+        timer = null;
+      }
+    }, Math.max(0, wait | 0));
+  };
+})();
 
 /**
  * Initialize auth token from available sources
@@ -170,5 +221,6 @@ export default {
   isTokenExpired,
   storeToken,
   clearAuthData,
+  debouncedClearAuthData,
   initAuthToken
 };

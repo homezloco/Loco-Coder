@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { chat } from './api';
 import { checkApiHealth } from './components/ProjectDashboard/projectUtils.jsx';
 import './ChatPanel.css';
+import logger from './utils/logger';
+const log = logger.ns('ui:chat');
 
 // ChatSettings component for code application preferences
 const ChatSettings = ({ settings, onUpdateSettings, isDarkMode }) => {
@@ -139,7 +141,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
         offlinePendingMessages.current = JSON.parse(pendingMessages);
       }
     } catch (error) {
-      console.error('Error loading chat history from localStorage:', error);
+      log.error('Error loading chat history from localStorage:', error);
     }
     
     // Check API status on mount
@@ -151,7 +153,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
     try {
       localStorage.setItem('chatHistory', JSON.stringify(responses));
     } catch (error) {
-      console.error('Error saving chat history to localStorage:', error);
+      log.error('Error saving chat history to localStorage:', error);
     }
   }, [responses]);
   
@@ -210,7 +212,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
           return;
         }
       } catch (netError) {
-        console.warn('Internet connectivity test failed:', netError);
+        log.warn('Internet connectivity test failed:', netError);
         // Continue with API health check even if the internet test fails
       }
       
@@ -227,7 +229,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
         processPendingMessages();
       }
     } catch (error) {
-      console.error('Error checking chat API status:', error);
+      log.error('Error checking chat API status:', error);
       setApiStatus({
         status: 'error',
         message: 'Error checking connection'
@@ -256,7 +258,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
     try {
       localStorage.setItem('offlinePendingMessages', JSON.stringify(offlinePendingMessages.current));
     } catch (error) {
-      console.error('Error updating offline pending messages in localStorage:', error);
+      log.error('Error updating offline pending messages in localStorage:', error);
     }
     
     for (const pendingMessage of pendingMessages) {
@@ -275,7 +277,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
           }
         ]);
       } catch (error) {
-        console.error('Error sending pending message:', error);
+        log.error('Error sending pending message:', error);
         setResponses(prev => [
           ...prev, 
           {
@@ -323,7 +325,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
         try {
           localStorage.setItem('offlinePendingMessages', JSON.stringify(offlinePendingMessages.current));
         } catch (error) {
-          console.error('Error saving offline pending messages to localStorage:', error);
+          log.error('Error saving offline pending messages to localStorage:', error);
         }
         
         setResponses(prev => [
@@ -353,7 +355,7 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
         }
       ]);
     } catch (error) {
-      console.error('Error sending message:', error);
+      log.error('Error sending message:', error);
       
       // Add error message to chat history
       setResponses(prev => [
@@ -373,10 +375,10 @@ export default function ChatPanel({ codeIntegration, isDarkMode = false, apiEndp
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code)
       .then(() => {
-        console.log('Code copied to clipboard');
+        log.info('Code copied to clipboard');
       })
       .catch(err => {
-        console.error('Failed to copy code:', err);
+        log.error('Failed to copy code:', err);
       });
   };
   

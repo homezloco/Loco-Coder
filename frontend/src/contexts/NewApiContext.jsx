@@ -5,6 +5,10 @@ import api from '../services/api';
 
 // Debug log API methods
 const logApiMethods = () => {
+  const DEV = !!(import.meta && import.meta.env && import.meta.env.DEV);
+  if (!DEV) return;
+  if (window.__API_LOGGED_ONCE__) return;
+  window.__API_LOGGED_ONCE__ = true;
   console.group('NewApiContext - API Object Inspection');
   
   try {
@@ -97,8 +101,10 @@ const logApiMethods = () => {
   }
 };
 
-// Log API methods on import
-const apiMethods = logApiMethods();
+// Log API methods on import (DEV only, once per session)
+(() => {
+  try { logApiMethods(); } catch (_) {}
+})();
 
 // Helper function to create a project with fallbacks
 const createProjectWithFallbacks = async (projectData) => {

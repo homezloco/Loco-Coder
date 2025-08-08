@@ -5,6 +5,9 @@
  * with comprehensive error handling and fallbacks.
  */
 
+import logger from './logger';
+const log = logger.ns('api:db:indexeddb');
+
 // Database configuration
 const DB_NAME = 'CoderAIProjectsDB';
 const DB_VERSION = 1;
@@ -19,7 +22,7 @@ const initDB = () => {
     try {
       // Check if IndexedDB is supported
       if (!window.indexedDB) {
-        console.warn('IndexedDB is not supported in this browser. Using fallback storage.');
+        log.warn('IndexedDB is not supported in this browser. Using fallback storage.');
         reject(new Error('IndexedDB not supported'));
         return;
       }
@@ -27,17 +30,17 @@ const initDB = () => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = (event) => {
-        console.error('IndexedDB error:', event.target.error);
+        log.error('IndexedDB error:', event.target.error);
         reject(event.target.error);
       };
 
       request.onsuccess = (event) => {
         const db = event.target.result;
-        console.log('IndexedDB connected successfully');
+        log.info('IndexedDB connected successfully');
         
         // Add error handling for database connection failures
         db.onerror = (event) => {
-          console.error('Database error:', event.target.error);
+          log.error('Database error:', event.target.error);
         };
         
         resolve(db);
@@ -57,11 +60,11 @@ const initDB = () => {
           projectsStore.createIndex('lastModified', 'lastModified', { unique: false });
           projectsStore.createIndex('isFavorite', 'isFavorite', { unique: false });
           
-          console.log('Projects object store created successfully');
+          log.info('Projects object store created successfully');
         }
       };
     } catch (error) {
-      console.error('Fatal error initializing IndexedDB:', error);
+      log.error('Fatal error initializing IndexedDB:', error);
       reject(error);
     }
   });
@@ -75,7 +78,7 @@ const initDB = () => {
 export const storeProjects = async (projects) => {
   try {
     if (!Array.isArray(projects) || projects.length === 0) {
-      console.warn('No valid projects to store');
+      log.warn('No valid projects to store');
       return false;
     }
 
@@ -101,17 +104,17 @@ export const storeProjects = async (projects) => {
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        console.log(`Successfully stored ${projects.length} projects in IndexedDB`);
+        log.info(`Successfully stored ${projects.length} projects in IndexedDB`);
         resolve(true);
       };
       
       transaction.onerror = (error) => {
-        console.error('Error storing projects in IndexedDB:', error);
+        log.error('Error storing projects in IndexedDB:', error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error('Failed to store projects in IndexedDB:', error);
+    log.error('Failed to store projects in IndexedDB:', error);
     return false;
   }
 };
@@ -130,17 +133,17 @@ export const getAllProjects = async () => {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const projects = request.result;
-        console.log(`Retrieved ${projects.length} projects from IndexedDB`);
+        log.info(`Retrieved ${projects.length} projects from IndexedDB`);
         resolve(projects);
       };
       
       request.onerror = (error) => {
-        console.error('Error retrieving projects from IndexedDB:', error);
+        log.error('Error retrieving projects from IndexedDB:', error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error('Failed to retrieve projects from IndexedDB:', error);
+    log.error('Failed to retrieve projects from IndexedDB:', error);
     return [];
   }
 };
@@ -165,17 +168,17 @@ export const getProjectsByCategory = async (category) => {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const projects = request.result;
-        console.log(`Retrieved ${projects.length} projects in category '${category}'`);
+        log.info(`Retrieved ${projects.length} projects in category '${category}'`);
         resolve(projects);
       };
       
       request.onerror = (error) => {
-        console.error(`Error retrieving projects for category '${category}':`, error);
+        log.error(`Error retrieving projects for category '${category}':`, error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error(`Failed to retrieve projects for category '${category}':`, error);
+    log.error(`Failed to retrieve projects for category '${category}':`, error);
     return [];
   }
 };
@@ -195,17 +198,17 @@ export const getFavoriteProjects = async () => {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const projects = request.result;
-        console.log(`Retrieved ${projects.length} favorite projects`);
+        log.info(`Retrieved ${projects.length} favorite projects`);
         resolve(projects);
       };
       
       request.onerror = (error) => {
-        console.error('Error retrieving favorite projects:', error);
+        log.error('Error retrieving favorite projects:', error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error('Failed to retrieve favorite projects:', error);
+    log.error('Failed to retrieve favorite projects:', error);
     return [];
   }
 };
@@ -239,17 +242,17 @@ export const getRecentProjects = async (limit = 10) => {
         // Limit to requested number
         const limitedProjects = sortedProjects.slice(0, limit);
         
-        console.log(`Retrieved ${limitedProjects.length} recent projects`);
+        log.info(`Retrieved ${limitedProjects.length} recent projects`);
         resolve(limitedProjects);
       };
       
       request.onerror = (error) => {
-        console.error('Error retrieving recent projects:', error);
+        log.error('Error retrieving recent projects:', error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error('Failed to retrieve recent projects:', error);
+    log.error('Failed to retrieve recent projects:', error);
     return [];
   }
 };
@@ -261,7 +264,7 @@ export const getRecentProjects = async (limit = 10) => {
  */
 export const updateProject = async (project) => {
   if (!project || !project.id) {
-    console.error('Cannot update project: Invalid project object or missing ID');
+    log.error('Cannot update project: Invalid project object or missing ID');
     return false;
   }
   
@@ -277,17 +280,17 @@ export const updateProject = async (project) => {
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        console.log(`Project '${project.id}' updated successfully`);
+        log.info(`Project '${project.id}' updated successfully`);
         resolve(true);
       };
       
       request.onerror = (error) => {
-        console.error(`Error updating project '${project.id}':`, error);
+        log.error(`Error updating project '${project.id}':`, error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error(`Failed to update project '${project.id}':`, error);
+    log.error(`Failed to update project '${project.id}':`, error);
     return false;
   }
 };
@@ -299,7 +302,7 @@ export const updateProject = async (project) => {
  */
 export const deleteProject = async (projectId) => {
   if (!projectId) {
-    console.error('Cannot delete project: Missing project ID');
+    log.error('Cannot delete project: Missing project ID');
     return false;
   }
   
@@ -311,17 +314,17 @@ export const deleteProject = async (projectId) => {
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        console.log(`Project '${projectId}' deleted successfully`);
+        log.info(`Project '${projectId}' deleted successfully`);
         resolve(true);
       };
       
       request.onerror = (error) => {
-        console.error(`Error deleting project '${projectId}':`, error);
+        log.error(`Error deleting project '${projectId}':`, error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error(`Failed to delete project '${projectId}':`, error);
+    log.error(`Failed to delete project '${projectId}':`, error);
     return false;
   }
 };
@@ -339,17 +342,17 @@ export const clearAllProjects = async () => {
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        console.log('All projects cleared from IndexedDB');
+        log.info('All projects cleared from IndexedDB');
         resolve(true);
       };
       
       request.onerror = (error) => {
-        console.error('Error clearing projects from IndexedDB:', error);
+        log.error('Error clearing projects from IndexedDB:', error);
         reject(error);
       };
     });
   } catch (error) {
-    console.error('Failed to clear projects from IndexedDB:', error);
+    log.error('Failed to clear projects from IndexedDB:', error);
     return false;
   }
 };
@@ -361,7 +364,7 @@ export const clearAllProjects = async () => {
  */
 export const searchProjects = async (query) => {
   if (!query || typeof query !== 'string') {
-    console.warn('Invalid search query');
+    log.warn('Invalid search query');
     return [];
   }
   
@@ -386,10 +389,10 @@ export const searchProjects = async (query) => {
       return nameMatch || descMatch || tagMatch;
     });
     
-    console.log(`Found ${matchingProjects.length} projects matching '${query}'`);
+    log.info(`Found ${matchingProjects.length} projects matching '${query}'`);
     return matchingProjects;
   } catch (error) {
-    console.error(`Search failed for query '${query}':`, error);
+    log.error(`Search failed for query '${query}':`, error);
     return [];
   }
 };
@@ -407,7 +410,7 @@ export const isIndexedDBAvailable = async () => {
     await initDB();
     return true;
   } catch (error) {
-    console.warn('IndexedDB is not available:', error);
+    log.warn('IndexedDB is not available:', error);
     return false;
   }
 };

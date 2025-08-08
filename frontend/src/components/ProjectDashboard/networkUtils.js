@@ -2,6 +2,7 @@
  * Network Utilities for checking connectivity
  * Provides robust internet and API connectivity checks with multiple fallbacks
  */
+import logger from '../../utils/logger';
 
 /**
  * Check if the device has internet connectivity
@@ -34,7 +35,7 @@ export async function checkInternetConnectivity() {
       // Try each endpoint until one succeeds
       for (const endpoint of endpoints) {
         try {
-          const response = await fetch(`${endpoint}?_=${timestamp}`, {
+          await fetch(`${endpoint}?_=${timestamp}`, {
             method: 'HEAD',  // HEAD is lightweight
             mode: 'no-cors',  // Avoid CORS issues
             cache: 'no-store',  // Don't use cache
@@ -45,7 +46,7 @@ export async function checkInternetConnectivity() {
           return { isOnline: true, method: 'fetch' };
         } catch (e) {
           // Continue to next endpoint
-          console.log(`Connectivity check to ${endpoint} failed, trying next...`);
+          logger.ns('api:connectivity').info(`Connectivity check to ${endpoint} failed, trying next...`);
         }
       }
       
@@ -53,13 +54,13 @@ export async function checkInternetConnectivity() {
       return { isOnline: false, method: 'fetch-all-failed' };
     } catch (error) {
       clearTimeout(timeoutId);
-      console.warn('Connectivity fetch check failed:', error);
+      logger.ns('api:connectivity').warn('Connectivity fetch check failed', { error });
       
       // Fall back to navigator.onLine if fetch fails
       return { isOnline: navigatorOnline, method: 'navigator-fallback' };
     }
   } catch (error) {
-    console.error('Error in connectivity check:', error);
+    logger.ns('api:connectivity').error('Error in connectivity check', { error });
     // Best effort: if we can execute code, we're probably online
     return { isOnline: true, method: 'error-fallback' };
   }

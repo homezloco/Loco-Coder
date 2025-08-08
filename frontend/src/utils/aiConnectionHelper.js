@@ -1,4 +1,5 @@
 // aiConnectionHelper.js - Tools to detect, diagnose, and fix AI model connection issues
+import logger from './logger';
 
 /**
  * Comprehensive tools for diagnosing AI model connection problems
@@ -315,7 +316,7 @@ export async function checkConfiguration() {
       }
     }
   } catch (error) {
-    console.error("Error checking configuration:", error);
+    logger.ns('api:connectivity:helper').error('Error checking configuration', { error });
   }
   
   return {

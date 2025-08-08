@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { verifyToken } from '../../../api/auth';
+import logger from '../../../utils/logger';
 
 export const AuthContext = createContext();
+const log = logger.ns('auth');
 
 export const AuthProvider = ({ children }) => {
   const [authenticated, setAuthenticated] = useState(false);
@@ -27,7 +29,7 @@ export const AuthProvider = ({ children }) => {
           }
         }
       } catch (error) {
-        console.error('Authentication check failed:', error);
+        log.error('Authentication check failed:', error);
       } finally {
         setIsLoading(false);
       }
@@ -57,9 +59,13 @@ export const AuthProvider = ({ children }) => {
         lastLogin: Date.now()
       }));
       
+      if (import.meta?.env?.DEV) {
+        log.info('Login successful', { hasToken: !!token, isAdmin: !!isAdmin });
+      }
+      
       return true;
     } catch (error) {
-      console.error('Login error:', error);
+      log.error('Login error:', error);
       return false;
     }
   }, []);
@@ -73,6 +79,9 @@ export const AuthProvider = ({ children }) => {
     // Clear stored data
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
+    if (import.meta?.env?.DEV) {
+      log.info('User logged out');
+    }
   }, []);
 
   const value = {

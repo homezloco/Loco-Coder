@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useApi } from '../../../../contexts/NewApiContext';
 import { useFeedback } from '../../../feedback/FeedbackContext.jsx';
+import logger from '../../../../utils/logger';
 
 const useChat = () => {
   const { showErrorToast } = useFeedback();
@@ -81,7 +82,7 @@ const useChat = () => {
         setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (err) {
-      console.error('Error sending message to AI:', err);
+      logger.ns('ui:chat:hook').error('Error sending message to AI', { error: err });
       setError('Failed to get a response from the AI. Please try again.');
       showErrorToast('Failed to get a response from the AI');
     } finally {

@@ -9,6 +9,9 @@
  * 3. Memory storage (last resort) - non-persistent but always available
  */
 
+import logger from './logger';
+const log = logger.ns('api:db:fallback');
+
 // Database configuration
 const DB_NAME = 'coder_fallback_db';
 const DB_VERSION = 1;
@@ -134,21 +137,21 @@ export async function initFallbackDatabase() {
     hasIndexedDB = await checkIndexedDBSupport();
     hasLocalStorage = checkLocalStorageSupport();
     
-    console.log(`Storage availability: IndexedDB=${hasIndexedDB}, localStorage=${hasLocalStorage}, Memory=true`);
+    log.info(`Storage availability: IndexedDB=${hasIndexedDB}, localStorage=${hasLocalStorage}, Memory=true`);
     
     // Initialize IndexedDB if available
     if (hasIndexedDB) {
       try {
         await initIndexedDB();
       } catch (e) {
-        console.warn('IndexedDB initialization failed:', e);
+        log.warn('IndexedDB initialization failed:', e);
         hasIndexedDB = false;
       }
     }
     
     return true;
   } catch (error) {
-    console.error('Failed to initialize fallback database system:', error);
+    log.error('Failed to initialize fallback database system:', error);
     return false;
   }
 }
@@ -163,7 +166,7 @@ async function initIndexedDB() {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
     
     request.onerror = (event) => {
-      console.error('IndexedDB open failed:', event.target.error);
+      log.error('IndexedDB open failed:', event.target.error);
       reject(event.target.error);
     };
     
@@ -214,7 +217,7 @@ async function initIndexedDB() {
     
     request.onsuccess = (event) => {
       const db = event.target.result;
-      console.log('IndexedDB initialized successfully');
+      log.info('IndexedDB initialized successfully');
       db.close();
       resolve(true);
     };
@@ -239,7 +242,7 @@ export async function saveToFallbackDB(storeName, data) {
     try {
       return await saveToIndexedDB(storeName, itemToSave);
     } catch (error) {
-      console.warn(`IndexedDB save failed for ${storeName}, trying localStorage:`, error);
+      log.warn(`IndexedDB save failed for ${storeName}, trying localStorage:`, error);
     }
   }
   
@@ -248,7 +251,7 @@ export async function saveToFallbackDB(storeName, data) {
     try {
       return await saveToLocalStorage(storeName, itemToSave);
     } catch (error) {
-      console.warn(`localStorage save failed for ${storeName}, using memory fallback:`, error);
+      log.warn(`localStorage save failed for ${storeName}, using memory fallback:`, error);
     }
   }
   
@@ -358,10 +361,10 @@ function pruneLocalStorage() {
     const itemsToRemove = Math.max(Math.floor(items.length * 0.2), 5);
     items.slice(0, itemsToRemove).forEach(item => {
       localStorage.removeItem(item.key);
-      console.log(`Removed old localStorage item: ${item.key}`);
+      log.info(`Removed old localStorage item: ${item.key}`);
     });
   } catch (e) {
-    console.error('Error pruning localStorage:', e);
+    log.error('Error pruning localStorage:', e);
   }
 }
 
@@ -401,7 +404,7 @@ export async function getFromFallbackDB(storeName, key) {
       const result = await getFromIndexedDB(storeName, key);
       if (result) return result;
     } catch (error) {
-      console.warn(`IndexedDB retrieval failed for ${storeName}:${key}, trying localStorage:`, error);
+      log.warn(`IndexedDB retrieval failed for ${storeName}:${key}, trying localStorage:`, error);
     }
   }
   
@@ -414,7 +417,7 @@ export async function getFromFallbackDB(storeName, key) {
         return JSON.parse(item);
       }
     } catch (error) {
-      console.warn(`localStorage retrieval failed for ${storeName}:${key}, using memory fallback:`, error);
+      log.warn(`localStorage retrieval failed for ${storeName}:${key}, using memory fallback:`, error);
     }
   }
   
@@ -475,7 +478,7 @@ export async function queryFallbackDB(storeName, filterFn) {
       const idbResults = await queryIndexedDB(storeName, filterFn);
       results.push(...idbResults);
     } catch (error) {
-      console.warn(`IndexedDB query failed for ${storeName}, trying localStorage:`, error);
+      log.warn(`IndexedDB query failed for ${storeName}, trying localStorage:`, error);
     }
   }
   
@@ -500,11 +503,11 @@ export async function queryFallbackDB(storeName, filterFn) {
             }
           }
         } catch (e) {
-          console.warn(`Error parsing localStorage item ${storeName}:${key}:`, e);
+          log.warn(`Error parsing localStorage item ${storeName}:${key}:`, e);
         }
       }
     } catch (error) {
-      console.warn(`localStorage query failed for ${storeName}, using memory fallback:`, error);
+      log.warn(`localStorage query failed for ${storeName}, using memory fallback:`, error);
     }
   }
   
@@ -601,7 +604,7 @@ export async function syncFallbackData(storeName, syncFn) {
     return results;
   }
   
-  console.log(`Syncing ${pendingItems.length} items from ${storeName}...`);
+  log.info(`Syncing ${pendingItems.length} items from ${storeName}...`);
   
   // Process each pending item
   for (const item of pendingItems) {
@@ -609,7 +612,7 @@ export async function syncFallbackData(storeName, syncFn) {
       // Don't retry items that have failed too many times
       const syncAttempts = item._syncAttempts || 0;
       if (syncAttempts > 5) {
-        console.warn(`Skipping sync for item that failed too many times:`, item);
+        log.warn(`Skipping sync for item that failed too many times:`, item);
         results.skipped.push(item);
         continue;
       }
@@ -643,7 +646,7 @@ export async function syncFallbackData(storeName, syncFn) {
         });
       }
     } catch (error) {
-      console.error(`Error syncing item from ${storeName}:`, error, item);
+      log.error(`Error syncing item from ${storeName}:`, error, item);
       
       // Update error state but keep pending
       try {
@@ -654,7 +657,7 @@ export async function syncFallbackData(storeName, syncFn) {
           _syncError: error.message || String(error)
         });
       } catch (saveError) {
-        console.error('Failed to update sync error state:', saveError);
+        log.error('Failed to update sync error state:', saveError);
       }
       
       results.failed.push({
@@ -686,7 +689,7 @@ export async function cleanupFallbackStorage() {
         return item._lastUpdated && (now - item._lastUpdated > ttl);
       });
       
-      console.log(`Found ${items.length} expired items in ${storeName}`);
+      log.info(`Found ${items.length} expired items in ${storeName}`);
       
       // Delete expired items
       for (const item of items) {
@@ -722,11 +725,11 @@ export async function cleanupFallbackStorage() {
           }
           
         } catch (deleteError) {
-          console.warn(`Failed to delete expired item from ${storeName}:`, deleteError);
+          log.warn(`Failed to delete expired item from ${storeName}:`, deleteError);
         }
       }
     } catch (storeError) {
-      console.error(`Error cleaning up ${storeName}:`, storeError);
+      log.error(`Error cleaning up ${storeName}:`, storeError);
     }
   }
 }

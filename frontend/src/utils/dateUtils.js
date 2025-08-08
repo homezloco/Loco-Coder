@@ -6,6 +6,9 @@
  * @param {boolean} options.includeDate - Whether to include the date in the output
  * @returns {string} Formatted time string
  */
+import logger from './logger';
+const log = logger.ns('util:date');
+
 export const formatTimestamp = (timestamp, options = {}) => {
   const { includeSeconds = false, includeDate = false } = options;
   
@@ -15,7 +18,7 @@ export const formatTimestamp = (timestamp, options = {}) => {
   
   // Handle invalid date
   if (isNaN(date.getTime())) {
-    console.warn('Invalid timestamp:', timestamp);
+    log.warn('Invalid timestamp:', timestamp);
     return '';
   }
   
@@ -42,7 +45,7 @@ export const formatTimestamp = (timestamp, options = {}) => {
     
     return new Intl.DateTimeFormat('en-US', timeOptions).format(date);
   } catch (error) {
-    console.error('Error formatting timestamp:', error);
+    log.error('Error formatting timestamp:', error);
     return date.toLocaleTimeString();
   }
 };

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useApi } from '../../../../../contexts/NewApiContext';
 import { useFeedback } from '../../../../../components/feedback/FeedbackContext.jsx';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,6 +17,7 @@ import {
 
 import { additionalFiles, getHtmlTemplate } from './templates';
 import { getCssTemplate, getJsTemplate, getBackendFiles, getDockerFiles, getGitHubWorkflowFiles } from './moreTemplates';
+import logger from '../../../../../utils/logger';
 
 /**
  * Custom hook to manage project creation state and logic
@@ -24,6 +25,7 @@ import { getCssTemplate, getJsTemplate, getBackendFiles, getDockerFiles, getGitH
 const useProjectCreation = () => {
   const { createProject: createProjectFromContext } = useApi();
   const { showSuccessToast, showErrorToast } = useFeedback();
+  const log = logger.ns('project:create');
   
   // State for project creation modals
   const [showProjectCreator, setShowProjectCreator] = useState(false);
@@ -335,13 +337,13 @@ venv.bak/
           });
         }
       } catch (logoError) {
-        console.warn('Failed to generate logo:', logoError);
+        log.warn('Failed to generate logo:', logoError);
       }
       
       setProjectPlan(plan);
       setIsGeneratingPlan(false);
     } catch (error) {
-      console.error('Error generating project plan:', error);
+      log.error('Error generating project plan:', error);
       setProjectError(error.message || 'Failed to generate project plan');
       setIsGeneratingPlan(false);
     }
@@ -349,24 +351,24 @@ venv.bak/
   
   // Function to create a project from a plan
   const createProjectFromPlan = useCallback(async (planData) => {
-    console.debug('[ProjectCreator] createProjectFromPlan called', {
+    log.debug('[ProjectCreator] createProjectFromPlan called', {
       hasPlan: !!planData,
       filesCount: Array.isArray(planData?.files) ? planData.files.length : undefined,
     });
     if (!planData) {
       const error = new Error('No plan data provided');
-      console.error('[ProjectCreator] Error in createProjectFromPlan:', error);
+      log.error('[ProjectCreator] Error in createProjectFromPlan:', error);
       showErrorToast('Failed to create project: No plan data provided');
       throw error;
     }
     
     try {
-      console.log('[ProjectCreator] Creating project from plan:', planData);
+      log.info('[ProjectCreator] Creating project from plan:', planData);
       
       // Ensure the plan data has an ID
       if (!planData.id) {
         planData.id = `project_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-        console.log('[ProjectCreator] Generated new project ID:', planData.id);
+        log.info('[ProjectCreator] Generated new project ID:', planData.id);
       }
       
       // Prepare project data for storage
@@ -375,7 +377,7 @@ venv.bak/
       // Double-check that ID is present after preparation
       if (!projectData.id) {
         projectData.id = planData.id || `project_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-        console.log('[ProjectCreator] Restored project ID after preparation:', projectData.id);
+        log.info('[ProjectCreator] Restored project ID after preparation:', projectData.id);
       }
       
       // Try to create project via API if authenticated
@@ -389,9 +391,9 @@ venv.bak/
           token = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
         }
       } catch (tokenErr) {
-        console.warn('[ProjectCreator] Token access error, proceeding without token:', tokenErr);
+        log.warn('[ProjectCreator] Token access error, proceeding without token:', tokenErr);
       }
-      console.debug('[ProjectCreator] Token/Network status', {
+      log.debug('[ProjectCreator] Token/Network status', {
         tokenKey,
         storageType: TOKEN_KEYS?.storageType,
         hasToken: !!token,
@@ -400,23 +402,22 @@ venv.bak/
       
       if (token && navigator.onLine) {
         try {
-          console.info('[ProjectCreator] Using API path to create project');
+          log.info('[ProjectCreator] Using API path to create project');
           const apiProject = await createProjectFromContext(projectData);
           
           if (apiProject && apiProject.id) {
             showSuccessToast('Project created successfully');
-            console.log('[ProjectCreator] Navigating to project:', apiProject.id);
-            window.location.href = `/project/${apiProject.id}`;
+            log.info('[ProjectCreator] Project created (API), returning object without navigation:', apiProject.id);
             return apiProject;
           }
         } catch (apiError) {
-          console.warn('[ProjectCreator] API project creation failed, falling back to local storage', apiError);
+          log.warn('[ProjectCreator] API project creation failed, falling back to local storage', apiError);
         }
       }
       
       // If we get here, either the API call failed or we're not authenticated
       // Log the project data before saving to storage
-      console.log('[ProjectCreator] Saving project to storage:', {
+      log.info('[ProjectCreator] Saving project to storage:', {
         id: projectData.id,
         name: projectData.name,
         hasId: Boolean(projectData.id)
@@ -426,29 +427,28 @@ venv.bak/
       let savedToIndexedDB = false;
       try {
         savedToIndexedDB = await saveToIndexedDB(projectData);
-        console.log('[ProjectCreator] Saved to IndexedDB:', savedToIndexedDB);
+        log.info('[ProjectCreator] Saved to IndexedDB:', savedToIndexedDB);
       } catch (indexedDBError) {
-        console.error('[ProjectCreator] IndexedDB save error:', indexedDBError);
+        log.error('[ProjectCreator] IndexedDB save error:', indexedDBError);
       }
       let savedToLocal = false;
       try {
         savedToLocal = saveToLocalStorage(projectData);
       } catch (localStorageError) {
-        console.error('[ProjectCreator] localStorage save error:', localStorageError);
+        log.error('[ProjectCreator] localStorage save error:', localStorageError);
       }
-      console.debug('[ProjectCreator] Local save results', { savedToIndexedDB, savedToLocal });
+      log.debug('[ProjectCreator] Local save results', { savedToIndexedDB, savedToLocal });
       if (savedToIndexedDB || savedToLocal) {
         const message = !navigator.onLine ? ' (offline mode)' : ' (local storage)';
         showSuccessToast(`Project created${message}`);
-        console.log('[ProjectCreator] Navigating to project:', projectData.id);
-        window.location.href = `/project/${projectData.id}`;
+        log.info('[ProjectCreator] Project created (local), returning object without navigation:', projectData.id);
         return { ...projectData, isLocal: true };
       }
       
       // If all storage methods failed
       throw new Error('Failed to save project. Please check your storage permissions.');
     } catch (error) {
-      console.error('[ProjectCreator] Error creating project:', error);
+      log.error('[ProjectCreator] Error creating project:', error);
       showErrorToast(`Failed to create project: ${error.message}`);
       throw error;
     }
@@ -458,13 +458,13 @@ venv.bak/
   const createProjectFromTemplate = useCallback(async (templateData) => {
     if (!templateData) {
       const error = new Error('No template data provided');
-      console.error('[ProjectCreator] Error in createProjectFromTemplate:', error);
+      log.error('[ProjectCreator] Error in createProjectFromTemplate:', error);
       showErrorToast('Failed to create project: No template data provided');
       throw error;
     }
 
     try {
-      console.log('[ProjectCreator] Creating project from template:', templateData);
+      log.info('[ProjectCreator] Creating project from template:', templateData);
       
       // Generate a project ID
       const projectId = `project_${Date.now()}`;
@@ -494,12 +494,12 @@ venv.bak/
         lastModified: timestamp
       };
 
-      console.log('[ProjectCreator] Created project from template:', projectData);
+      log.info('[ProjectCreator] Created project from template:', projectData);
       
       // Save the project using our main creation function
       return await createProjectFromPlan(projectData);
     } catch (error) {
-      console.error('[ProjectCreator] Error creating project from template:', error);
+      log.error('[ProjectCreator] Error creating project from template:', error);
       showErrorToast(`Failed to create project from template: ${error.message}`);
       throw error;
     }
@@ -529,12 +529,12 @@ venv.bak/
    */
   const createProject = async (projectData, options = {}) => {
     try {
-      console.log('[ProjectCreator] Creating project:', projectData.name);
+      log.info('Creating project:', projectData.name);
       
       // Ensure project has an ID
       if (!projectData.id) {
         projectData.id = generateUniqueId();
-        console.log('[ProjectCreator] Generated new project ID:', projectData.id);
+        log.debug('Generated new project ID:', projectData.id);
       }
       
       // Add creation timestamp if not present
@@ -544,31 +544,29 @@ venv.bak/
       
       // Prepare data for storage
       const preparedData = prepareDataForStorage(projectData);
-      
-      // Log the project data before saving
-      console.log('[ProjectCreator] Project data prepared for storage:', {
+      log.debug('Project data prepared for storage:', {
         id: preparedData.id,
         name: preparedData.name,
         hasId: Boolean(preparedData.id)
       });
-      
+
       // Try to save to IndexedDB first
       let savedToIndexedDB = false;
       try {
         savedToIndexedDB = await saveToIndexedDB(preparedData);
-        console.log('[ProjectCreator] Saved to IndexedDB:', savedToIndexedDB);
+        log.debug('Saved to IndexedDB:', savedToIndexedDB);
       } catch (error) {
-        console.error('[ProjectCreator] Failed to save to IndexedDB:', error);
+        log.warn('Failed to save to IndexedDB:', error);
       }
-      
+
       // Fallback to localStorage if IndexedDB fails
       let savedToLocalStorage = false;
       if (!savedToIndexedDB) {
         try {
           savedToLocalStorage = saveToLocalStorage(preparedData);
-          console.log('[ProjectCreator] Saved to localStorage:', savedToLocalStorage);
+          log.debug('Saved to localStorage:', savedToLocalStorage);
         } catch (error) {
-          console.error('[ProjectCreator] Failed to save to localStorage:', error);
+          log.warn('Failed to save to localStorage:', error);
         }
       }
       
@@ -579,15 +577,11 @@ venv.bak/
       
       return preparedData;
     } catch (error) {
-      console.error('[ProjectCreator] Error creating project:', error);
+      log.error('Error creating project:', error);
       throw error;
     }
   };
 
-  /**
-   * Generate a unique ID for a project
-   * @returns {string} - Unique ID
-   */
   const generateUniqueId = () => {
     // Use a timestamp + random string for uniqueness
     const timestamp = new Date().getTime();

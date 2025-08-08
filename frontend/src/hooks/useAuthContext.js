@@ -1,6 +1,8 @@
-import { useMemo, useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { useFeedback } from '../components/feedback/FeedbackContext';
+import logger from '../utils/logger';
+const log = logger.ns('auth');
 
 // Fallback auth object when context is not available
 const FALLBACK_AUTH = {
@@ -8,15 +10,15 @@ const FALLBACK_AUTH = {
   user: null,
   token: null,
   login: async () => { 
-    console.warn('Auth context not available - login called on fallback');
+    log.warn('Auth context not available - login called on fallback');
     throw new Error('Authentication not available'); 
   },
   logout: () => {
-    console.warn('Auth context not available - logout called on fallback');
+    log.warn('Auth context not available - logout called on fallback');
     return Promise.resolve();
   },
   register: async () => {
-    console.warn('Auth context not available - register called on fallback');
+    log.warn('Auth context not available - register called on fallback');
     throw new Error('Registration not available');
   },
   loading: false,
@@ -31,6 +33,9 @@ export const useAuthContext = () => {
   const [auth, setAuth] = useState(FALLBACK_AUTH);
   const [loading, setLoading] = useState(true);
   const [authModule, setAuthModule] = useState(null);
+  const initRef = useRef(false);
+  const DEV = !!(import.meta && import.meta.env && import.meta.env.DEV);
+  const storageDebounceRef = useRef(null);
 
   // Load the auth module dynamically to avoid circular dependencies
   useEffect(() => {
@@ -43,7 +48,7 @@ export const useAuthContext = () => {
           setAuthModule(module);
         }
       } catch (error) {
-        console.warn('Failed to load auth context:', error);
+        if (DEV) log.warn('Failed to load auth context:', error);
         if (isMounted) {
           setAuth(FALLBACK_AUTH);
           setLoading(false);
@@ -60,7 +65,10 @@ export const useAuthContext = () => {
 
   const setupAuth = useCallback(async () => {
     try {
-      console.log('[Auth] Initializing auth context...');
+      if (DEV && !window.__AUTH_INIT_LOGGED__) {
+        log.info('[Auth] Initializing auth context...');
+        window.__AUTH_INIT_LOGGED__ = true;
+      }
       
       // First, try to get any existing token from the API service
       let token = await api.getAuthToken();
@@ -71,17 +79,17 @@ export const useAuthContext = () => {
         token = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
         
         if (token) {
-          console.log('[Auth] Found token in storage, setting in API service...');
+          if (DEV) log.info('[Auth] Found token in storage, setting in API service...');
           await api.setAuthToken(token);
         }
       }
       
       // If we have a token, try to get user data
       if (token) {
-        console.log('[Auth] Token found, fetching user data...');
+        if (DEV) log.info('[Auth] Token found, fetching user data...');
         try {
           const userData = await api.auth.me();
-          console.log('[Auth] User data fetched successfully:', userData);
+          if (DEV) log.info('[Auth] User data fetched successfully:', userData);
           
           setAuth({
             user: userData,
@@ -92,18 +100,18 @@ export const useAuthContext = () => {
           });
           return;
         } catch (error) {
-          console.warn('[Auth] Failed to fetch user data:', error);
+          if (DEV) log.warn('[Auth] Failed to fetch user data:', error);
           // Clear invalid token
           await api.clearAuthToken();
         }
       }
       
       // If we get here, either no token or invalid token
-      console.log('[Auth] No valid token found, using fallback auth');
+      if (DEV) log.info('[Auth] No valid token found, using fallback auth');
       setAuth(FALLBACK_AUTH);
       
     } catch (error) {
-      console.error('[Auth] Error initializing auth context:', error);
+      if (DEV) log.error('[Auth] Error initializing auth context:', error);
       setAuth({
         ...FALLBACK_AUTH,
         error: error.message || 'Failed to initialize authentication'
@@ -114,23 +122,36 @@ export const useAuthContext = () => {
   // Once the auth module is loaded, initialize auth state on mount
   useEffect(() => {
     if (!authModule) return;
+    if (initRef.current) return; // prevent duplicate init in React StrictMode
+    initRef.current = true;
     
-    console.log('[Auth] Setting up auth...');
+    if (DEV) log.info('[Auth] Setting up auth...');
     setupAuth();
     
     // Listen for storage events to handle token changes across tabs
-    const handleStorageChange = async (e) => {
-      if (e.key === (api.TOKEN_KEYS?.storageKey || 'auth_token')) {
-        console.log('[Auth] Auth token changed in storage, revalidating...');
-        await setupAuth();
+    const tokenKey = (api.TOKEN_KEYS?.storageKey || 'auth_token');
+    const handleStorageChange = (e) => {
+      if (e.key !== tokenKey) return;
+      if (DEV && !window.__AUTH_STORAGE_CHANGE_LOGGED__) {
+        log.info('[Auth] Auth token changed in storage (debounced revalidation)...');
+        window.__AUTH_STORAGE_CHANGE_LOGGED__ = true;
       }
+      if (storageDebounceRef.current) clearTimeout(storageDebounceRef.current);
+      storageDebounceRef.current = setTimeout(() => {
+        setupAuth();
+        storageDebounceRef.current = null;
+      }, 300);
     };
     
     window.addEventListener('storage', handleStorageChange);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      if (storageDebounceRef.current) {
+        clearTimeout(storageDebounceRef.current);
+        storageDebounceRef.current = null;
+      }
     };
-  }, [authModule, setupAuth]);
+  }, [authModule, setupAuth, DEV]);
 
   return useMemo(() => ({
     ...auth,

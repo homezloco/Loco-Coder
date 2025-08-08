@@ -5,6 +5,9 @@
  * and maintains a central source of truth for application connectivity state.
  */
 
+import logger from './logger';
+const log = logger.ns('api:connectivity');
+
 // Configuration
 const CONFIG = {
   healthCheckInterval: 30000,        // Check connectivity every 30 seconds
@@ -69,7 +72,7 @@ function notifyListeners() {
     try {
       listener(state);
     } catch (error) {
-      console.error('Error in connectivity listener:', error);
+      log.error('Error in connectivity listener:', error);
     }
   });
 }
@@ -122,7 +125,7 @@ async function performHealthCheck() {
         
         return; // Exit after first successful endpoint
       } catch (endpointError) {
-        console.log(`Health check failed for endpoint ${endpoint}:`, endpointError.name);
+        log.info(`Health check failed for endpoint ${endpoint}:`, endpointError.name);
         // Continue to next endpoint
       }
     }
@@ -140,7 +143,7 @@ async function performHealthCheck() {
       });
     }
   } catch (error) {
-    console.error('Health check error:', error);
+    log.error('Health check error:', error);
   } finally {
     connectionState.isCheckInProgress = false;
   }
@@ -150,7 +153,7 @@ async function performHealthCheck() {
  * Handle browser online event
  */
 function handleOnline() {
-  console.log('Browser reports online status');
+  log.info('Browser reports online status');
   updateConnectionState({
     isOnline: true,
     source: 'browser-event'
@@ -164,7 +167,7 @@ function handleOnline() {
  * Handle browser offline event
  */
 function handleOffline() {
-  console.log('Browser reports offline status');
+  log.info('Browser reports offline status');
   updateConnectionState({
     isOnline: false,
     source: 'browser-event'

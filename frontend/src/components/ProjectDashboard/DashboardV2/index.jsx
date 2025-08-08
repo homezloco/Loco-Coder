@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { FiPlus, FiFolder } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 
 // Context hooks
 import { useFeedback } from '../../feedback/FeedbackContext';
@@ -25,6 +26,8 @@ import useChat from './hooks/useChat';
 const DashboardV2 = ({ isDarkMode = false }) => {
   // Get the API context to access aiService
   const { aiService } = useApi();
+  // Router navigation
+  const navigate = useNavigate();
   // Get projects state and actions from custom hooks
   const {
     projects,
@@ -73,8 +76,8 @@ const DashboardV2 = ({ isDarkMode = false }) => {
     }
     
     console.log('Selected project:', project.id);
-    window.location.href = `/project/${project.id}`;
-  }, [showErrorToast]);
+    navigate(`/project/${project.id}`);
+  }, [showErrorToast, navigate]);
   
   // Chat functionality
   const {
@@ -212,7 +215,24 @@ const DashboardV2 = ({ isDarkMode = false }) => {
         <ProjectPlanReview
           plan={projectPlan || {}}
           onClose={closeProjectPlan}
-          onConfirm={() => createProjectFromPlan(projectPlan)}
+          onConfirm={async () => {
+            try {
+              const created = await createProjectFromPlan(projectPlan);
+              if (created && created.id) {
+                // Close the plan review modal before navigating
+                try { closeProjectPlan(); } catch (_) {}
+                // Session cue: show success banner on destination
+                try { sessionStorage.setItem('project_created', created.id); } catch (_) {}
+                navigate(`/project/${created.id}`);
+              } else {
+                console.warn('[DashboardV2] Project created but no ID returned; staying on page');
+                showErrorToast('Project created, but no ID returned');
+              }
+            } catch (e) {
+              console.error('[DashboardV2] Project creation failed:', e);
+              showErrorToast(e?.message || 'Project creation failed');
+            }
+          }}
           isGenerating={isGeneratingPlan}
           aiService={aiService}
         />

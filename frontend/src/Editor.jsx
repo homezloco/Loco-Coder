@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import MonacoConfig from './MonacoConfig.jsx';
+import logger from './utils/logger';
+const log = logger.ns('ui:editor');
 
 // Global flag to track if we're in a cleanup phase
 let isInCleanupPhase = false;
@@ -47,13 +49,13 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
                 disposable.dispose();
               }
             } catch (e) {
-              console.warn('Error disposing command:', e);
+              log.warn('Error disposing command:', e);
             }
           }
         });
       }
     } catch (e) {
-      console.error('Error setting up save command:', e);
+      log.error('Error setting up save command:', e);
     }
     
     return () => {
@@ -86,7 +88,7 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
       // Focus the editor
       editor.focus();
     } catch (e) {
-      console.warn('Error initializing editor:', e);
+      log.warn('Error initializing editor:', e);
     }
     
     // No cleanup needed in the mount handler
@@ -125,7 +127,7 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
                 currentEditor.dispose();
               }
             } catch (e) {
-              console.warn('Error disposing editor:', e);
+              log.warn('Error disposing editor:', e);
             }
             
             // 4. Dispose the model in a separate tick
@@ -134,7 +136,7 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
                 try {
                   model.dispose();
                 } catch (e) {
-                  console.warn('Error disposing model:', e);
+                  log.warn('Error disposing model:', e);
                 } finally {
                   // 5. Clean up any remaining disposables
                   const disposables = disposablesRef.current || [];
@@ -149,7 +151,7 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
                         disposable();
                       }
                     } catch (e) {
-                      console.warn('Error cleaning up disposable:', e);
+                      log.warn('Error cleaning up disposable:', e);
                     }
                   }
                   
@@ -164,14 +166,14 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
               resolve();
             }
           } catch (e) {
-            console.error('Error during cleanup:', e);
+            log.error('Error during cleanup:', e);
             isInCleanupPhase = false;
             cleanupInProgressRef.current = false;
             resolve();
           }
         }, 0);
       } catch (e) {
-        console.error('Error in cleanup preparation:', e);
+        log.error('Error in cleanup preparation:', e);
         isInCleanupPhase = false;
         cleanupInProgressRef.current = false;
         resolve();
@@ -192,7 +194,7 @@ export default function CodeEditor({ code, onChange, language = "python", onSave
       
       // Start cleanup process
       handleEditorWillUnmount().catch(e => {
-        console.warn('Error during editor cleanup:', e);
+        log.warn('Error during editor cleanup:', e);
       });
     };
   }, [handleEditorWillUnmount]);

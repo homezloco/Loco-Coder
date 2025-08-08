@@ -10,6 +10,9 @@ const isNode = typeof process !== 'undefined' &&
                process.versions != null && 
                process.versions.node != null;
 
+import logger from './logger';
+const log = logger.ns('api:sync:file');
+
 // Import database utilities directly to avoid circular dependencies
 import dbFallback from './database-fallback.js';
 const { saveToFallbackDB, getFromFallbackDB, queryFallbackDB, STORES } = dbFallback;
@@ -25,7 +28,7 @@ const getApiClient = async () => {
       const api = await import('../api').then(module => module.default);
       apiClient = api;
     } catch (e) {
-      console.error('Failed to load API client:', e);
+      log.error('Failed to load API client:', e);
       // Return a minimal fallback API client with basic functionality
       return {
         getBaseUrl: () => '/api',
@@ -117,11 +120,11 @@ class FileSyncManager {
       
       if (pendingItems && pendingItems.length > 0) {
         this.syncQueue.push(...pendingItems);
-        console.log(`Loaded ${pendingItems.length} pending items for sync`);
+        log.info(`Loaded ${pendingItems.length} pending items for sync`);
       }
       
       this.initialized = true;
-      console.log('File Sync Manager initialized');
+      log.info('File Sync Manager initialized');
       
       // Initial sync if we're online
       if (this.isOnline && pendingItems.length > 0) {
@@ -130,7 +133,7 @@ class FileSyncManager {
       
       return true;
     } catch (error) {
-      console.error('Failed to initialize File Sync Manager:', error);
+      log.error('Failed to initialize File Sync Manager:', error);
       return false;
     }
   }
@@ -139,7 +142,7 @@ class FileSyncManager {
    * Handle coming back online
    */
   handleOnline() {
-    console.log('Back online, resuming sync');
+    log.info('Back online, resuming sync');
     this.isOnline = true;
     
     if (this.settings.autoSync) {
@@ -156,7 +159,7 @@ class FileSyncManager {
    * Handle going offline
    */
   handleOffline() {
-    console.log('Offline, pausing sync');
+    log.warn('Offline, pausing sync');
     this.isOnline = false;
     this.stopSyncTimer();
     
@@ -312,7 +315,7 @@ class FileSyncManager {
         
         return remoteFile;
       } catch (error) {
-        console.warn(`Failed to load file from backend, trying local cache: ${path}`, error);
+        log.warn(`Failed to load file from backend, trying local cache: ${path}`, error);
         // Fall back to local cache
       }
     }
@@ -363,7 +366,7 @@ class FileSyncManager {
     this.isSyncing = true;
     
     try {
-      console.log(`Processing sync queue: ${this.syncQueue.length} items`);
+      log.info(`Processing sync queue: ${this.syncQueue.length} items`);
       
       // Take a snapshot of the current queue
       const currentQueue = [...this.syncQueue];
@@ -383,7 +386,7 @@ class FileSyncManager {
       
       // Add failed items back to queue
       if (failed.length > 0) {
-        console.warn(`${failed.length} items failed to sync, adding back to queue`);
+        log.warn(`${failed.length} items failed to sync, adding back to queue`);
         this.syncQueue.push(...failed);
       }
       
@@ -398,7 +401,7 @@ class FileSyncManager {
         }
       }));
     } catch (error) {
-      console.error('Error processing sync queue:', error);
+      log.error('Error processing sync queue:', error);
     } finally {
       this.isSyncing = false;
     }
@@ -537,7 +540,7 @@ class FileSyncManager {
           syncStatus: SYNC_STATUS.SYNCED
         };
       } catch (error) {
-        console.error(`Failed to sync file: ${file.path}`, error);
+        log.error(`Failed to sync file: ${file.path}`, error);
         
         // Update local copy with error info
         const updatedFile = {
@@ -695,6 +698,7 @@ class FileSyncManager {
       // Check if file exists remotely
       if (this.isOnline) {
         try {
+          const api = await getApiClient();
           await api.loadFile(path);
           return SYNC_STATUS.REMOTE_ONLY;
         } catch (error) {
@@ -735,7 +739,7 @@ const fileSyncManager = new FileSyncManager();
 
 // Initialize on import
 fileSyncManager.init().catch(error => {
-  console.error('Failed to initialize File Sync Manager:', error);
+  log.error('Failed to initialize File Sync Manager:', error);
 });
 
 export {

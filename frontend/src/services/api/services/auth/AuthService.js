@@ -1,5 +1,8 @@
 import { TOKEN_KEYS, API_BASE_URL } from '../../config';
 import { fetchWithTimeout } from '../../utils/fetch';
+import logger from '../../../../utils/logger';
+
+const log = logger.ns('auth');
 
 /**
  * Authentication service for handling user authentication state and operations
@@ -48,7 +51,7 @@ class AuthService {
       const now = Math.floor(Date.now() / 1000);
       return payload.exp < now + threshold;
     } catch (error) {
-      console.error('[AuthService] Error checking token expiration:', error);
+      log.error('Error checking token expiration:', error);
       return true; // If we can't parse the token, consider it expired
     }
   }
@@ -75,7 +78,7 @@ class AuthService {
       try {
         localStorage.setItem(TOKEN_KEYS.refreshKey, refreshTokenValue);
       } catch (e) {
-        console.warn('[AuthService] Failed to store refresh token in localStorage:', e);
+        log.warn('Failed to store refresh token in localStorage:', e);
       }
     }
     
@@ -93,7 +96,7 @@ class AuthService {
         }
       }
     } catch (e) {
-      console.warn('[AuthService] Failed to store token:', e);
+      log.warn('Failed to store token:', e);
     }
     
     // Notify subscribers of auth state change
@@ -125,7 +128,7 @@ class AuthService {
       // Notify subscribers
       this.notifyAuthStateChanged({ isAuthenticated: false });
     } catch (e) {
-      console.warn('[AuthService] Failed to clear auth data:', e);
+      log.warn('Failed to clear auth data:', e);
     }
   }
 
@@ -133,25 +136,22 @@ class AuthService {
    * Initialize auth token from available sources
    */
   async initAuthToken() {
-    console.group('[AuthService] Initializing auth token');
+    log.info('Initializing auth token');
     
     // If we already have a token in memory, use it
     if (this.authToken && !this.isTokenExpired(this.authToken)) {
-      console.log('[AuthService] Using existing valid auth token from memory');
-      console.groupEnd();
+      log.debug('Using existing valid auth token from memory');
       return this.authToken;
     }
     
     // If initialization is already in progress, return the promise
     if (this.tokenInitializationPromise) {
-      console.log('[AuthService] Token initialization already in progress, waiting...');
+      log.info('Token initialization already in progress, waiting...');
       try {
         const token = await this.tokenInitializationPromise;
-        console.groupEnd();
         return token;
       } catch (error) {
-        console.error('[AuthService] Error during token initialization:', error);
-        console.groupEnd();
+        log.error('Error during token initialization:', error);
         return null;
       }
     }
@@ -159,7 +159,7 @@ class AuthService {
     // Start the initialization process
     this.tokenInitializationPromise = (async () => {
       try {
-        console.log('[AuthService] Initializing auth token from storage');
+        log.info('Initializing auth token from storage');
         
         // Get the token storage key from config
         const tokenKey = TOKEN_KEYS?.storageKey || 'auth_token';
@@ -176,7 +176,7 @@ class AuthService {
               try {
                 return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(tokenKey) : null;
               } catch (e) {
-                console.warn('[AuthService] Error reading from sessionStorage:', e);
+                log.warn('Error reading from sessionStorage:', e);
                 return null;
               }
             }
@@ -187,7 +187,7 @@ class AuthService {
               try {
                 return typeof localStorage !== 'undefined' ? localStorage.getItem(tokenKey) : null;
               } catch (e) {
-                console.warn('[AuthService] Error reading from localStorage:', e);
+                log.warn('Error reading from localStorage:', e);
                 return null;
               }
             }
@@ -200,7 +200,7 @@ class AuthService {
                 const match = document.cookie.match(new RegExp('(^| )' + tokenKey + '=([^;]+)'));
                 return match ? decodeURIComponent(match[2]) : null;
               } catch (e) {
-                console.warn('[AuthService] Error reading from cookies:', e);
+                log.warn('Error reading from cookies:', e);
                 return null;
               }
             }
@@ -211,29 +211,29 @@ class AuthService {
         let foundToken = null;
         for (const source of tokenSources) {
           try {
-            console.log(`[AuthService] Checking token source: ${source.name}`);
+            log.info(`Checking token source: ${source.name}`);
             const token = await Promise.resolve(source.get());
             
             // Basic JWT validation (3 parts separated by dots)
             if (token && typeof token === 'string' && token.split('.').length === 3) {
               foundToken = token;
-              console.log(`[AuthService] Found token in ${source.name}`);
+              log.info(`Found token in ${source.name}`);
               break;
             }
           } catch (error) {
-            console.warn(`[AuthService] Error checking ${source.name}:`, error);
+            log.warn(`Error checking ${source.name}:`, error);
           }
         }
         
         // If no token was found in any source
         if (!foundToken) {
-          console.log('[AuthService] No valid auth token found in any source');
+          log.info('No valid auth token found in any source');
           return null;
         }
         
         // Validate the token
         if (this.isTokenExpired(foundToken)) {
-          console.warn('[AuthService] Token is expired');
+          log.warn('Token is expired');
           await this.clearAuthToken();
           return null;
         }
@@ -243,13 +243,13 @@ class AuthService {
           try {
             const isValid = await this.validateToken(foundToken);
             if (!isValid) {
-              console.warn('[AuthService] Token validation failed');
+              log.warn('Token validation failed');
               await this.clearAuthToken();
               return null;
             }
-            console.log('[AuthService] Token validated successfully');
+            log.info('Token validated successfully');
           } catch (validationError) {
-            console.warn('[AuthService] Error validating token:', validationError);
+            log.warn('Error validating token:', validationError);
             // Continue with the token even if validation fails (might be offline)
           }
         }
@@ -266,7 +266,7 @@ class AuthService {
                 localStorage.setItem(tokenKey, foundToken);
               }
             } catch (e) {
-              console.warn('[AuthService] Failed to store token in localStorage:', e);
+              log.warn('Failed to store token in localStorage:', e);
             }
             
             try {
@@ -274,7 +274,7 @@ class AuthService {
                 sessionStorage.setItem(tokenKey, foundToken);
               }
             } catch (e) {
-              console.warn('[AuthService] Failed to store token in sessionStorage:', e);
+              log.warn('Failed to store token in sessionStorage:', e);
             }
             
             try {
@@ -282,22 +282,22 @@ class AuthService {
                 document.cookie = `${tokenKey}=${encodeURIComponent(foundToken)}; path=/; max-age=${TOKEN_KEYS.expiresIn || 604800}; samesite=strict${window.location.protocol === 'https:' ? '; secure' : ''}`;
               }
             } catch (e) {
-              console.warn('[AuthService] Failed to store token in cookies:', e);
+              log.warn('Failed to store token in cookies:', e);
             }
             
-            console.log('[AuthService] Synced token across available storage locations');
+            log.info('Synced token across available storage locations');
           }
         } catch (error) {
-          console.warn('[AuthService] Error syncing token to storage:', error);
+          log.warn('Error syncing token to storage:', error);
         }
         
         // Notify subscribers
         this.notifyAuthStateChanged({ isAuthenticated: true });
         
-        console.log('[AuthService] Auth token initialized successfully');
+        log.info('Auth token initialized successfully');
         return foundToken;
       } catch (error) {
-        console.error('[AuthService] Error initializing auth token:', error);
+        log.error('Error initializing auth token:', error);
         return null;
       } finally {
         this.tokenInitializationPromise = null;
@@ -306,11 +306,9 @@ class AuthService {
     
     try {
       const token = await this.tokenInitializationPromise;
-      console.groupEnd();
       return token;
     } catch (error) {
-      console.error('[AuthService] Error during token initialization:', error);
-      console.groupEnd();
+      log.error('Error during token initialization:', error);
       return null;
     }
   }
@@ -321,30 +319,30 @@ class AuthService {
    * @returns {Promise<string|null>} The auth token or null if not found/expired
    */
   async getAuthToken(skipValidation = false) {
-    console.group('[AuthService] getAuthToken');
+    log.debug('getAuthToken called', { skipValidation });
     try {
       // If we already have a valid token in memory, use it
       if (this.authToken && !this.isTokenExpired(this.authToken)) {
-        console.log('[AuthService] Using valid in-memory auth token');
+        log.debug('Using valid in-memory auth token');
         return this.authToken;
       }
       
       // Initialize the token if not already done
       const token = await this.initAuthToken();
       if (!token) {
-        console.log('[AuthService] No valid token found');
+        log.info('No valid token found');
         return null;
       }
       
       // Skip validation if requested
       if (skipValidation) {
-        console.log('[AuthService] Using token without validation');
+        log.debug('Using token without validation');
         return token;
       }
       
       // Check if token is expired
       if (this.isTokenExpired(token)) {
-        console.warn('[AuthService] Token is expired');
+        log.warn('Token is expired');
         await this.clearAuthToken();
         return null;
       }
@@ -354,23 +352,21 @@ class AuthService {
         try {
           const isValid = await this.validateToken(token);
           if (!isValid) {
-            console.warn('[AuthService] Token validation failed');
+            log.warn('Token validation failed');
             await this.clearAuthToken();
             return null;
           }
-          console.log('[AuthService] Token validated successfully');
+          log.info('Token validated successfully');
         } catch (validationError) {
-          console.warn('[AuthService] Error validating token:', validationError);
+          log.warn('Error validating token:', validationError);
           // Continue with the token even if validation fails (might be offline)
         }
       }
       
       return token;
     } catch (error) {
-      console.error('[AuthService] Error getting auth token:', error);
+      log.error('Error getting auth token:', error);
       return null;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -382,10 +378,10 @@ class AuthService {
    * @returns {Promise<void>}
    */
   async setAuthToken(token, options = {}) {
-    console.group('[AuthService] setAuthToken');
+    log.info('setAuthToken called');
     try {
       if (!token) {
-        console.warn('[AuthService] No token provided, clearing auth token');
+        log.warn('No token provided, clearing auth token');
         await this.clearAuthToken();
         return;
       }
@@ -415,17 +411,15 @@ class AuthService {
         // Notify subscribers
         this.notifyAuthStateChanged({ isAuthenticated: true });
         
-        console.log('[AuthService] Auth token set successfully');
+        log.info('Auth token set successfully');
       } catch (storageError) {
-        console.error('[AuthService] Error storing token:', storageError);
+        log.error('Error storing token:', storageError);
         // Still keep the token in memory even if storage fails
         this.notifyAuthStateChanged({ isAuthenticated: true });
       }
     } catch (error) {
-      console.error('[AuthService] Error setting auth token:', error);
+      log.error('Error setting auth token:', error);
       throw error;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -434,7 +428,7 @@ class AuthService {
    * @returns {Promise<void>}
    */
   async clearAuthToken() {
-    console.group('[AuthService] clearAuthToken');
+    log.info('clearAuthToken called');
     try {
       // Clear from memory
       this.authToken = null;
@@ -451,19 +445,17 @@ class AuthService {
           document.cookie = `${tokenKey}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         }
         
-        console.log('[AuthService] Auth token cleared from all storage locations');
+        log.info('Auth token cleared from all storage locations');
       } catch (storageError) {
-        console.error('[AuthService] Error clearing token from storage:', storageError);
+        log.error('Error clearing token from storage:', storageError);
       }
       
       // Notify subscribers
       this.notifyAuthStateChanged({ isAuthenticated: false });
       
     } catch (error) {
-      console.error('[AuthService] Error clearing auth token:', error);
+      log.error('Error clearing auth token:', error);
       throw error;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -473,20 +465,20 @@ class AuthService {
    * @returns {Promise<boolean>} True if the token is valid
    */
   async validateToken(token) {
-    console.group('[AuthService] validateToken');
+    log.debug('validateToken called');
     try {
       if (!token) {
-        console.warn('[AuthService] No token provided for validation');
+        log.warn('No token provided for validation');
         return false;
       }
       
       // Skip validation in test environment
       if (process.env.NODE_ENV === 'test') {
-        console.log('[AuthService] Skipping token validation in test environment');
+        log.info('Skipping token validation in test environment');
         return true;
       }
       
-      console.log('[AuthService] Validating token with server...');
+      log.info('Validating token with server...');
       
       const response = await fetchWithTimeout(`${API_BASE_URL}/auth/validate`, {
         method: 'GET',
@@ -498,21 +490,19 @@ class AuthService {
       });
       
       if (!response.ok) {
-        console.warn(`[AuthService] Token validation failed with status: ${response.status}`);
+        log.warn(`Token validation failed with status: ${response.status}`);
         return false;
       }
       
       const data = await response.json();
-      console.log('[AuthService] Token validation result:', data);
+      log.debug('Token validation result:', data);
       
       return data.valid === true;
       
     } catch (error) {
-      console.error('[AuthService] Error validating token:', error);
+      log.error('Error validating token:', error);
       // If we can't reach the server, assume the token is valid (offline mode)
       return true;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -525,7 +515,7 @@ class AuthService {
    * @returns {Promise<Object>} The user data and token
    */
   async login(username, password, options = {}) {
-    console.group('[AuthService] login');
+    log.info('login called');
     try {
       // Input validation
       const sanitizedUsername = username?.trim();
@@ -541,7 +531,7 @@ class AuthService {
         throw error;
       }
       
-      console.log(`[AuthService] Attempting login for user: ${sanitizedUsername}`);
+      log.info(`Attempting login for user: ${sanitizedUsername}`);
       
       // Make the login request
       const response = await fetchWithTimeout(`${API_BASE_URL}/auth/login`, {
@@ -584,22 +574,20 @@ class AuthService {
           this.currentUser = data.user;
         }
         
-        console.log('[AuthService] Login successful');
+        log.info('Login successful');
         return data;
       } else {
         throw new Error('No token received from server');
       }
       
     } catch (error) {
-      console.error('[AuthService] Login error:', error);
+      log.error('Login error:', error);
       
       // Clear any partial auth state on error
       await this.clearAuthToken();
       
       // Re-throw the error for the caller to handle
       throw error;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -608,7 +596,7 @@ class AuthService {
    * @returns {Promise<void>}
    */
   async logout() {
-    console.group('[AuthService] logout');
+    log.info('logout called');
     try {
       // Get the token before clearing it
       const token = this.authToken;
@@ -625,7 +613,7 @@ class AuthService {
         localStorage.removeItem(TOKEN_KEYS.refreshKey);
         sessionStorage.removeItem(TOKEN_KEYS.refreshKey);
       } catch (e) {
-        console.warn('[AuthService] Error clearing refresh token:', e);
+        log.warn('Error clearing refresh token:', e);
       }
       
       // Notify the server (fire and forget)
@@ -637,20 +625,18 @@ class AuthService {
             'Content-Type': 'application/json'
           }
         }).catch(e => {
-          console.warn('[AuthService] Error notifying server of logout:', e);
+          log.warn('Error notifying server of logout:', e);
         });
       }
       
       // Notify subscribers
       this.notifyAuthStateChanged({ isAuthenticated: false });
       
-      console.log('[AuthService] Logout successful');
+      log.info('Logout successful');
       
     } catch (error) {
-      console.error('[AuthService] Error during logout:', error);
+      log.error('Error during logout:', error);
       throw error;
-    } finally {
-      console.groupEnd();
     }
   }
   
@@ -684,14 +670,14 @@ class AuthService {
       ...state
     };
     
-    console.log('[AuthService] Notifying subscribers of auth state change:', authState);
+    log.debug('Notifying subscribers of auth state change:', authState);
     
     // Call all subscribers
     this.authStateSubscribers.forEach(callback => {
       try {
         callback(authState);
       } catch (error) {
-        console.error('[AuthService] Error in auth state subscriber:', error);
+        log.error('Error in auth state subscriber:', error);
       }
     });
   }

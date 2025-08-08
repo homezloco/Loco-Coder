@@ -7,6 +7,7 @@
  */
 
 import { saveToFallbackDB, getFromFallbackDB } from './database-fallback';
+import logger from './logger';
 
 // Cache store names
 const AGENT_CACHE_STORE = 'agent_consensus_agents';
@@ -214,7 +215,7 @@ export function createAgentConsensusApi({
             return cachedData.value;
           }
         } catch (cacheError) {
-          console.error('Failed to retrieve from cache:', cacheError);
+          logger.ns('api:consensus').error('Failed to retrieve from cache', { error: cacheError });
         }
       }
       
@@ -224,7 +225,7 @@ export function createAgentConsensusApi({
           const fallbackData = localFallbackFn(endpoint, options);
           return fallbackData;
         } catch (fallbackError) {
-          console.error('Local fallback failed:', fallbackError);
+          logger.ns('api:consensus').error('Local fallback failed', { error: fallbackError });
         }
       }
       
@@ -285,7 +286,7 @@ export function createAgentConsensusApi({
         );
         successCount++;
       } catch (error) {
-        console.error('Failed to process offline request:', error);
+        logger.ns('api:consensus').error('Failed to process offline request', { error });
         
         // Put back in the queue if not too old (24 hours)
         const ageHours = (Date.now() - request.timestamp) / (1000 * 60 * 60);
@@ -305,7 +306,7 @@ export function createAgentConsensusApi({
     window.addEventListener('online', async () => {
       const processed = await processOfflineQueue();
       if (processed > 0) {
-        console.log(`Processed ${processed} queued requests`);
+        logger.ns('api:consensus').info('Processed queued requests', { processed });
       }
     });
     

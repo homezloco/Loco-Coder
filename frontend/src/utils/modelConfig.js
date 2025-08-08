@@ -1,4 +1,6 @@
 // modelConfig.js - Configuration and utilities for AI models and consensus decision making
+import logger from './logger';
+const log = logger.ns('api:ai:model');
 
 /**
  * Default available AI models with metadata
@@ -137,7 +139,7 @@ export function selectConsensusModels(availableModels, consensusConfig, isOfflin
   });
 
   if (eligibleModels.length < consensusConfig.minModels) {
-    console.warn('Not enough eligible models for consensus decision making');
+    log.warn('Not enough eligible models for consensus decision making');
     return [];
   }
 

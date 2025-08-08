@@ -1,4 +1,5 @@
 import { showToast } from '../components/feedback/Toast';
+import logger from '../utils/logger';
 
 export const auditFileWithAI = async (fileContent, fileName, settings) => {
   if (!settings.enableAIAudit || !settings.aiAuditEndpoint) {
@@ -26,7 +27,7 @@ export const auditFileWithAI = async (fileContent, fileName, settings) => {
     const result = await response.json();
     return result;
   } catch (error) {
-    console.error('AI audit error:', error);
+    logger.ns('api:ai:audit').error('AI audit error', { error });
     showToast(`AI audit failed: ${error.message}`, 'error');
     return null;
   }
