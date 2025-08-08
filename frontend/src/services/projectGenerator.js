@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateProjectName, generateProjectLogo } from './aiService';
 import logger from '../utils/logger';
-const genLog = logger('project:generator');
+const genLog = logger.ns('project:generator');
 
 // Cache for generated logos to avoid regenerating them
 const logoCache = new Map();

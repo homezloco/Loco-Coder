@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import logger from './utils/logger';
-const healthLog = logger('monitor:health');
+const healthLog = logger.ns('monitor:health');
 
 /**
  * SystemHealth component displays the status of all backend services

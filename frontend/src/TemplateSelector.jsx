@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './TemplateSelector.css';
 import logger from './utils/logger';
-const uiTemplateLog = logger('ui:template');
+const uiTemplateLog = logger.ns('ui:template');
 
 /**
  * Template selector component for creating new projects from templates

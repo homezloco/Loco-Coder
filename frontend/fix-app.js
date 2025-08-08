@@ -1,5 +1,22 @@
 // Simple script to help diagnose React app issues
-console.log('Checking React app issues...');
+// Use centralized logger if available, otherwise fallback to console with namespace prefix
+const fixAppLog = (function () {
+  try {
+    if (window && window.logger && typeof window.logger.ns === 'function') {
+      return window.logger.ns('util:fix-app');
+    }
+  } catch {}
+  const prefix = '[util:fix-app]';
+  return {
+    info: (...args) => console.log(prefix, ...args),
+    warn: (...args) => console.warn(prefix, ...args),
+    error: (...args) => console.error(prefix, ...args),
+    debug: (...args) => console.debug(prefix, ...args),
+    trace: (...args) => console.trace(prefix, ...args),
+  };
+})();
+
+fixAppLog.info('Checking React app issues...');
 
 // Add a basic div to the DOM for diagnostics
 function addDiagnosticDiv() {
@@ -41,7 +58,7 @@ if (document.readyState === 'loading') {
   addDiagnosticDiv();
 }
 
-// Report any errors to console
+// Report any errors via logger
 window.addEventListener('error', (e) => {
-  console.error('React Error:', e.message);
+  fixAppLog.error('React Error:', e.message);
 });

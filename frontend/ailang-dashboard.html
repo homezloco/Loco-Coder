@@ -130,6 +130,22 @@
   </div>
 
   <script>
+    // Lightweight logger with namespace fallback for standalone HTML page
+    const dashLog = (function () {
+      try {
+        if (window && window.logger && typeof window.logger.ns === 'function') {
+          return window.logger.ns('util:dashboard');
+        }
+      } catch {}
+      const prefix = '[util:dashboard]';
+      return {
+        info: (...args) => console.log(prefix, ...args),
+        warn: (...args) => console.warn(prefix, ...args),
+        error: (...args) => console.error(prefix, ...args),
+        debug: (...args) => console.debug(prefix, ...args),
+        trace: (...args) => console.trace(prefix, ...args),
+      };
+    })();
     // API base URL - pointing directly to our standalone AILang API server
     const API_BASE_URL = 'http://localhost:8001';
     
@@ -163,7 +179,7 @@
         loading = false;
         renderDashboard();
       } catch (err) {
-        console.error('Error fetching data:', err);
+        dashLog.error('Error fetching data:', err);
         error = `Failed to connect to the AILang API server. Make sure it is running on port 8001.`;
         loading = false;
         renderDashboard();

@@ -6,7 +6,7 @@
 // This version removes complex error handling and IndexedDB to isolate issues
 
 import logger from './logger';
-const chatLog = logger('api:chat');
+const chatLog = logger.ns('api:chat');
 
 /**
  * Enhanced API health check with multiple fallbacks for API connectivity
@@ -124,7 +124,7 @@ export function saveChatHistory(history) {
   // Sanitize history before saving
   let sanitizedHistory;
   try {
-    chatLog.log('Sanitizing chat history...');
+    chatLog.info('Sanitizing chat history...');
     sanitizedHistory = Array.isArray(history) 
       ? history.map((msg, index) => {
           try {
@@ -135,7 +135,7 @@ export function saveChatHistory(history) {
           }
         })
       : [];
-    chatLog.log('Sanitized chat history:', sanitizedHistory);
+    chatLog.info('Sanitized chat history:', sanitizedHistory);
   } catch (e) {
     chatLog.error('Critical error sanitizing chat history:', e);
     return false;
@@ -143,7 +143,7 @@ export function saveChatHistory(history) {
 
   // First try IndexedDB
   try {
-    chatLog.log('Attempting to save to IndexedDB...');
+    chatLog.info('Attempting to save to IndexedDB...');
     const request = window.indexedDB.open('chatHistoryDB', 1);
     
     request.onupgradeneeded = (event) => {
@@ -167,7 +167,7 @@ export function saveChatHistory(history) {
         store.put({ id: 'latest', history: sanitizedHistory });
         
         transaction.oncomplete = () => {
-          chatLog.log('Successfully saved chat history to IndexedDB');
+          chatLog.info('Successfully saved chat history to IndexedDB');
         };
         
         transaction.onerror = (e) => {
@@ -193,15 +193,15 @@ export function saveChatHistory(history) {
   
   function fallbackToLocalStorage(data) {
     try {
-      chatLog.log('Falling back to localStorage...');
+      chatLog.info('Falling back to localStorage...');
       localStorage.setItem('chatHistory', JSON.stringify(data));
-      chatLog.log('Successfully saved chat history to localStorage');
+      chatLog.info('Successfully saved chat history to localStorage');
       return true;
     } catch (e) {
       chatLog.error('Error saving to localStorage, falling back to sessionStorage:', e);
       try {
         sessionStorage.setItem('chatHistory', JSON.stringify(data));
-        chatLog.log('Successfully saved chat history to sessionStorage');
+        chatLog.info('Successfully saved chat history to sessionStorage');
         return true;
       } catch (e) {
         chatLog.error('Could not save chat history anywhere');
@@ -239,7 +239,7 @@ export function saveUserSettings(settings) {
       store.put({ id: 'user', settings });
       
       transaction.oncomplete = () => {
-        chatLog.log('Settings saved to IndexedDB');
+        chatLog.info('Settings saved to IndexedDB');
       };
     };
     
@@ -260,12 +260,12 @@ export function saveUserSettings(settings) {
         }
         
         localStorage.setItem('chatSettings', JSON.stringify(sanitizedSettings));
-        chatLog.log('Sanitized settings saved to localStorage');
+        chatLog.info('Sanitized settings saved to localStorage');
       } catch (e) {
         chatLog.error('Error saving to localStorage, falling back to sessionStorage');
         try {
           sessionStorage.setItem('chatSettings', JSON.stringify(settings));
-          chatLog.log('Settings saved to sessionStorage');
+          chatLog.info('Settings saved to sessionStorage');
         } catch (e) {
           chatLog.error('Could not save settings anywhere');
         }
@@ -318,7 +318,7 @@ export async function loadUserSettings() {
         
         getRequest.onsuccess = () => {
           if (getRequest.result) {
-            chatLog.log('Settings loaded from IndexedDB');
+            chatLog.info('Settings loaded from IndexedDB');
             resolve(getRequest.result.settings);
           } else {
             // Try localStorage
@@ -346,7 +346,7 @@ export async function loadUserSettings() {
       try {
         const settings = localStorage.getItem('chatSettings');
         if (settings) {
-          chatLog.log('Settings loaded from localStorage');
+          chatLog.info('Settings loaded from localStorage');
           const parsedSettings = JSON.parse(settings);
           
           // If we have sanitized settings (only provider names, not keys)
@@ -373,7 +373,7 @@ export async function loadUserSettings() {
       try {
         const settings = sessionStorage.getItem('chatSettings');
         if (settings) {
-          chatLog.log('Settings loaded from sessionStorage');
+          chatLog.info('Settings loaded from sessionStorage');
           resolve(JSON.parse(settings));
         } else {
           // No settings found anywhere, return defaults

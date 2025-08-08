@@ -2,6 +2,8 @@ import { ENDPOINTS } from '../config';
 import { get, post, fetchWithTimeout } from '../utils/fetch';
 import { withCache } from '../utils/cache';
 import { handleApiError, BadRequestError } from '../utils/errors';
+import logger from '../../../utils/logger';
+const tplLog = logger.ns('api:templates');
 
 /**
  * Fetches all available templates
@@ -36,12 +38,12 @@ export const getTemplates = async (options = {}) => {
     return result;
     
   } catch (error) {
-    console.error('Error fetching templates:', error);
+    tplLog.error('Error fetching templates:', error);
     
     // Return default templates if available in cache
     const cached = getFromCache('templates:default');
     if (cached) {
-      console.warn('Using cached default templates due to error:', error.message);
+      tplLog.warn('Using cached default templates due to error:', error.message);
       return cached;
     }
     
@@ -207,7 +209,7 @@ export const getTemplate = async (templateId, options = {}) => {
     return template;
     
   } catch (error) {
-    console.error(`Error fetching template ${templateId}:`, error);
+    tplLog.error(`Error fetching template ${templateId}:`, error);
     
     // Try to find in default templates
     const defaultTemplates = getFromCache('templates:default') || [];
@@ -257,7 +259,7 @@ export const createProjectFromTemplate = async (templateId, projectData, options
     return response.json();
     
   } catch (error) {
-    console.error(`Error creating project from template ${templateId}:`, error);
+    tplLog.error(`Error creating project from template ${templateId}:`, error);
     
     // Fallback: Use local template files if available
     if (error.code === 'NETWORK_ERROR' || error.status >= 500) {
@@ -270,7 +272,7 @@ export const createProjectFromTemplate = async (templateId, projectData, options
         };
         
         // In a real implementation, you would create the project with these files
-        console.warn('Using local template fallback due to network/server error');
+        tplLog.warn('Using local template fallback due to network/server error');
         return project;
       }
     }

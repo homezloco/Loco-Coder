@@ -1,7 +1,7 @@
 import { API_BASE_URL, FALLBACK_URLS } from '../config';
 import tokenUtils from '../auth/token';
 import logger from '../../../utils/logger';
-const fetchLog = logger('api:utils:fetch');
+const fetchLog = logger.ns('api:utils:fetch');
 
 // Track active requests to prevent duplicate calls
 const activeRequests = new Map();
@@ -32,7 +32,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
   
   // Check for duplicate requests
   if (activeRequests.has(requestKey)) {
-    fetchLog.log(`[Fetch] Returning existing request for ${requestKey}`);
+    fetchLog.info(`[Fetch] Returning existing request for ${requestKey}`);
     return activeRequests.get(requestKey);
   }
 
@@ -87,7 +87,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
       for (const baseUrl of urlsToTry) {
         try {
           const url = resource.startsWith('http') ? resource : `${baseUrl}${resource}`;
-          fetchLog.log(`[Fetch] Attempting request to ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
+          fetchLog.info(`[Fetch] Attempting request to ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
           
           // Make the request
           const response = await fetch(url, {
@@ -135,7 +135,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
           
           // Wait before retrying
           const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
-          fetchLog.log(`[Fetch] Retrying in ${delay}ms...`);
+          fetchLog.info(`[Fetch] Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           attempt++;
         }

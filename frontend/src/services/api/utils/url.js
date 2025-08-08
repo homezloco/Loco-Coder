@@ -1,5 +1,5 @@
 import logger from '../../../utils/logger';
-const urlLog = logger('api:utils:url');
+const urlLog = logger.ns('api:utils:url');
 import { API_BASE_URL, FALLBACK_URLS } from '../config';
 
 // Track current URL being used

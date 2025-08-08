@@ -11,7 +11,7 @@
 
 import { STORES, getFromFallbackDB, saveToFallbackDB } from './database-fallback';
 import logger from './logger';
-const apiFallbackLog = logger('api:api-fallback');
+const apiFallbackLog = logger.ns('api:api-fallback');
 
 // Alias the functions for backward compatibility
 const getFromLocalStorage = (key) => getFromFallbackDB(STORES.API_QUEUE, key);
@@ -132,7 +132,7 @@ export async function processQueue() {
   const storedQueue = await getFromLocalStorage('api-queue') || [];
   
   if (storedQueue.length > 0) {
-    apiFallbackLog.log(`Processing ${storedQueue.length} queued API requests`);
+    apiFallbackLog.info(`Processing ${storedQueue.length} queued API requests`);
     
     // Process in order (FIFO)
     for (const request of [...storedQueue]) {
@@ -255,13 +255,13 @@ export async function apiFetch(url, options = {}) {
 export function initApiFallbackSystem() {
   // Process queue when coming back online
   window.addEventListener('online', () => {
-    apiFallbackLog.log('Network connection restored. Processing queued requests...');
+    apiFallbackLog.info('Network connection restored. Processing queued requests...');
     processQueue();
   });
   
   // Log when going offline
   window.addEventListener('offline', () => {
-    apiFallbackLog.log('Network connection lost. Requests will be queued.');
+    apiFallbackLog.info('Network connection lost. Requests will be queued.');
   });
   
   // Initialize by loading any existing queue
@@ -270,7 +270,7 @@ export function initApiFallbackSystem() {
       const queue = await getFromLocalStorage('api-queue');
       if (queue && Array.isArray(queue)) {
         requestQueue.push(...queue);
-        apiFallbackLog.log(`Loaded ${queue.length} pending API requests`);
+        apiFallbackLog.info(`Loaded ${queue.length} pending API requests`);
       }
     } catch (err) {
       apiFallbackLog.warn('Error loading API queue, starting with empty queue:', err);
@@ -294,7 +294,7 @@ export function initApiFallbackSystem() {
     resetCircuitBreaker: () => {
       circuitState.failures = 0;
       circuitState.isOpen = false;
-      apiFallbackLog.log('API circuit breaker manually reset');
+      apiFallbackLog.info('API circuit breaker manually reset');
     }
   };
 }

@@ -9,7 +9,7 @@ import { selectConsensusModels, processConsensusVotes } from './modelConfig';
  * @returns {Object} Selected model and fallback options
  */
 import logger from './logger';
-const aiModelLog = logger('api:ai:model-manager');
+const aiModelLog = logger.ns('api:ai:model-manager');
 export async function selectAIModel(settings, isOffline, availableModels) {
   // Default to the active model from settings or fallback to first available
   const activeModelId = settings.activeModel || 'gpt-4-turbo';
@@ -265,7 +265,7 @@ async function performModelRouting(message, history, primaryModel, fallbackModel
     // Try each fallback model in sequence
     for (const fallbackModel of fallbackModels) {
       try {
-        aiModelLog.log(`Trying fallback model: ${fallbackModel.id}`);
+        aiModelLog.info(`Trying fallback model: ${fallbackModel.id}`);
         const fallbackResponse = await callModelAPI(fallbackModel, message, history, settings);
         return {
           ...fallbackResponse,

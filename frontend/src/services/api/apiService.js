@@ -1,6 +1,6 @@
 import { API_BASE_URL, FALLBACK_URLS, TOKEN_KEYS } from './config';
 import logger from '../../utils/logger';
-const apiLog = logger('api:service');
+const apiLog = logger.ns('api:service');
 
 // Token management
 let authToken = null;

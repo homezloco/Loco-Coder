@@ -451,7 +451,7 @@ export const generateProjectLogo = async (projectName, description, aiService) =
       generatedAt: new Date().toISOString()
     };
   } catch (error) {
-    console.error('Error generating project logo:', error);
+    logger.ns('api:ai').error('Error generating project logo:', error);
     // Fallback to a simple generated SVG
     return {
       type: 'svg',

@@ -1,6 +1,6 @@
 import { TOKEN_KEYS } from '../config';
 import logger from '../../../utils/logger';
-const authTokenLog = logger('api:auth:token');
+const authTokenLog = logger.ns('api:auth:token');
 
 /**
  * @typedef {Object} TokenInfo
@@ -9,7 +9,7 @@ const authTokenLog = logger('api:auth:token');
  */
 
 // Debug log
-authTokenLog.log('[Auth] Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
+authTokenLog.info('[Auth] Token module loading with TOKEN_KEYS:', TOKEN_KEYS);
 
 // In-memory token cache
 let authToken = {
@@ -141,7 +141,7 @@ const clearAuthToken = () => {
   }
   
   tokenOperations.lastClear = now;
-  authTokenLog.log('[API] Auth token cleared');
+  authTokenLog.info('[API] Auth token cleared');
   
   // Clear in-memory token
   authToken = { value: null, expires: null, lastChecked: now };
@@ -197,7 +197,7 @@ const getAuthToken = () => {
       if (!authToken.expires || authToken.expires > Date.now()) {
         return authToken.value;
       }
-      authTokenLog.log('[Auth] Cached token expired, checking other sources');
+      authTokenLog.info('[Auth] Cached token expired, checking other sources');
     }
 
     // Define all possible token sources with validation
@@ -260,10 +260,10 @@ const getAuthToken = () => {
               expires: expires?.getTime() || null
             };
             
-            authTokenLog.log(`[Auth] Using token from ${source.name}`);
+            authTokenLog.info(`[Auth] Using token from ${source.name}`);
             return token;
           }
-          authTokenLog.log(`[Auth] Token from ${source.name} is invalid or expired`);
+          authTokenLog.info(`[Auth] Token from ${source.name} is invalid or expired`);
         }
       } catch (error) {
         authTokenLog.warn(`Error getting token from ${source.name}:`, error);
@@ -273,7 +273,7 @@ const getAuthToken = () => {
     // No valid token found in any source
     if (tokenOperations.getCount % 5 === 0) {
       // Only log every 5th attempt to reduce noise
-      authTokenLog.log('[Auth] No valid authentication token found');
+      authTokenLog.info('[Auth] No valid authentication token found');
     }
     return '';
   } catch (error) {

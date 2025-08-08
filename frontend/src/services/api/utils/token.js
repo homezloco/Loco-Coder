@@ -1,6 +1,6 @@
 import { TOKEN_KEYS } from '../config';
 import logger from '../../../utils/logger';
-const tokenLog = logger('api:utils:token');
+const tokenLog = logger.ns('api:utils:token');
 
 // Track token state
 let authToken = null;
@@ -107,7 +107,7 @@ export const clearAuthData = () => {
   // No-op guard to prevent repeated clears/log spam
   if (!isAuthDataPresent()) {
     if (DEV && typeof window !== 'undefined' && !window.__TOKEN_CLEAR_NOOP_LOGGED__) {
-      tokenLog.log('[Token] clearAuthData: nothing to clear (noop)');
+      tokenLog.info('[Token] clearAuthData: nothing to clear (noop)');
       window.__TOKEN_CLEAR_NOOP_LOGGED__ = true;
     }
     return;

@@ -31,6 +31,9 @@ let hasLocalStorage = false;
 let hasMemoryFallback = true; // Always available as last resort
 let memoryStorage = {}; // In-memory fallback storage
 
+import logger from './logger';
+const dbFallbackLog = logger.ns('api:db:fallback');
+
 /**
  * Check if IndexedDB is available and working
  * @returns {Promise<boolean>}
@@ -84,21 +87,21 @@ export async function initFallbackDatabase() {
     hasIndexedDB = await checkIndexedDBSupport();
     hasLocalStorage = checkLocalStorageSupport();
     
-    console.log(`Storage availability: IndexedDB=${hasIndexedDB}, localStorage=${hasLocalStorage}, Memory=true`);
+    dbFallbackLog.info(`Storage availability: IndexedDB=${hasIndexedDB}, localStorage=${hasLocalStorage}, Memory=true`);
     
     // Initialize IndexedDB if available
     if (hasIndexedDB) {
       try {
         await initIndexedDB();
       } catch (e) {
-        console.warn('IndexedDB initialization failed:', e);
+        dbFallbackLog.warn('IndexedDB initialization failed:', e);
         hasIndexedDB = false;
       }
     }
     
     return true;
   } catch (error) {
-    console.error('Failed to initialize fallback database system:', error);
+    dbFallbackLog.error('Failed to initialize fallback database system:', error);
     return false;
   }
 }
@@ -113,7 +116,7 @@ async function initIndexedDB() {
     const request = window.indexedDB.open('coder_fallback_db', 1);
     
     request.onerror = (event) => {
-      console.error('IndexedDB open failed:', event.target.error);
+      dbFallbackLog.error('IndexedDB open failed:', event.target.error);
       reject(event.target.error);
     };
     
@@ -153,7 +156,7 @@ async function initIndexedDB() {
     
     request.onsuccess = (event) => {
       const db = event.target.result;
-      console.log('IndexedDB initialized successfully');
+      dbFallbackLog.info('IndexedDB initialized successfully');
       db.close();
       resolve(true);
     };
@@ -178,7 +181,7 @@ export async function saveToFallbackDB(storeName, data) {
     try {
       return await saveToIndexedDB(storeName, itemToSave);
     } catch (error) {
-      console.warn(`IndexedDB save failed for ${storeName}, trying localStorage:`, error);
+      dbFallbackLog.warn(`IndexedDB save failed for ${storeName}, trying localStorage:`, error);
     }
   }
   
@@ -187,7 +190,7 @@ export async function saveToFallbackDB(storeName, data) {
     try {
       return await saveToLocalStorage(storeName, itemToSave);
     } catch (error) {
-      console.warn(`localStorage save failed for ${storeName}, using memory fallback:`, error);
+      dbFallbackLog.warn(`localStorage save failed for ${storeName}, using memory fallback:`, error);
     }
   }
   
@@ -297,10 +300,10 @@ function pruneLocalStorage() {
     const itemsToRemove = Math.max(Math.floor(items.length * 0.2), 5);
     items.slice(0, itemsToRemove).forEach(item => {
       localStorage.removeItem(item.key);
-      console.log(`Removed old localStorage item: ${item.key}`);
+      dbFallbackLog.info(`Removed old localStorage item: ${item.key}`);
     });
   } catch (e) {
-    console.error('Error pruning localStorage:', e);
+    dbFallbackLog.error('Error pruning localStorage:', e);
   }
 }
 
@@ -340,7 +343,7 @@ export async function getFromFallbackDB(storeName, key) {
       const result = await getFromIndexedDB(storeName, key);
       if (result) return result;
     } catch (error) {
-      console.warn(`IndexedDB retrieval failed for ${storeName}:${key}, trying localStorage:`, error);
+      dbFallbackLog.warn(`IndexedDB retrieval failed for ${storeName}:${key}, trying localStorage:`, error);
     }
   }
   
@@ -353,7 +356,7 @@ export async function getFromFallbackDB(storeName, key) {
         return JSON.parse(item);
       }
     } catch (error) {
-      console.warn(`localStorage retrieval failed for ${storeName}:${key}, using memory fallback:`, error);
+      dbFallbackLog.warn(`localStorage retrieval failed for ${storeName}:${key}, using memory fallback:`, error);
     }
   }
   

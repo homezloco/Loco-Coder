@@ -2,7 +2,7 @@
 // This version removes complex error handling and IndexedDB to isolate issues
 
 import logger from './logger';
-const chatLog = logger('api:chat');
+const chatLog = logger.ns('api:chat');
 
 /**
  * Minimal sanitize function that just returns the input as-is
