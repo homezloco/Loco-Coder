@@ -1,4 +1,6 @@
 import { API_BASE_URL, FALLBACK_URLS, TOKEN_KEYS } from './config';
+import logger from '../../utils/logger';
+const apiLog = logger('api:service');
 
 // Token management
 let authToken = null;
@@ -11,7 +13,7 @@ const storeToken = (token) => {
   try {
     localStorage.setItem(TOKEN_KEYS.storageKey, token);
   } catch (e) {
-    console.warn('Failed to store token:', e);
+    apiLog.warn('Failed to store token:', e);
   }
 };
 
@@ -22,7 +24,7 @@ const clearAuthData = () => {
     localStorage.removeItem(TOKEN_KEYS.storageKey);
     sessionStorage.removeItem(TOKEN_KEYS.storageKey);
   } catch (e) {
-    console.warn('Failed to clear auth data:', e);
+    apiLog.warn('Failed to clear auth data:', e);
   }
 };
 
@@ -33,7 +35,7 @@ const initAuthToken = () => {
                  sessionStorage.getItem(TOKEN_KEYS.storageKey);
     if (token) authToken = token;
   } catch (e) {
-    console.warn('Failed to init token:', e);
+    apiLog.warn('Failed to init token:', e);
   }
 };
 
@@ -71,7 +73,7 @@ const fetchWithAuth = async (url, options = {}) => {
 
     return response;
   } catch (error) {
-    console.error('API request failed:', error);
+    apiLog.error('API request failed:', error);
     throw error;
   }
 };

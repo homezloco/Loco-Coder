@@ -1,5 +1,7 @@
 import { API_BASE_URL, FALLBACK_URLS } from '../config';
 import tokenUtils from '../auth/token';
+import logger from '../../../utils/logger';
+const fetchLog = logger('api:utils:fetch');
 
 // Track active requests to prevent duplicate calls
 const activeRequests = new Map();
@@ -30,7 +32,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
   
   // Check for duplicate requests
   if (activeRequests.has(requestKey)) {
-    console.log(`[Fetch] Returning existing request for ${requestKey}`);
+    fetchLog.log(`[Fetch] Returning existing request for ${requestKey}`);
     return activeRequests.get(requestKey);
   }
 
@@ -47,7 +49,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
     try {
       // Set up timeout
       timeoutId = setTimeout(() => {
-        console.warn(`[Fetch] Request to ${resource} timed out after ${timeout}ms`);
+        fetchLog.warn(`[Fetch] Request to ${resource} timed out after ${timeout}ms`);
         controller.abort(new Error(`Request timed out after ${timeout}ms`));
       }, timeout);
       
@@ -60,7 +62,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
             'Authorization': `Bearer ${token}`,
           };
         } else if (!skipAuth) {
-          console.warn('[Fetch] No auth token available for request to', resource);
+          fetchLog.warn('[Fetch] No auth token available for request to', resource);
         }
       }
 
@@ -85,7 +87,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
       for (const baseUrl of urlsToTry) {
         try {
           const url = resource.startsWith('http') ? resource : `${baseUrl}${resource}`;
-          console.log(`[Fetch] Attempting request to ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
+          fetchLog.log(`[Fetch] Attempting request to ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
           
           // Make the request
           const response = await fetch(url, {
@@ -113,12 +115,12 @@ export const fetchWithTimeout = async (resource, options = {}) => {
           
           // Don't retry if the request was aborted
           if (error.name === 'AbortError') {
-            console.warn('[Fetch] Request was aborted:', error.message);
+            fetchLog.warn('[Fetch] Request was aborted:', error.message);
             cleanup();
             throw error;
           }
           
-          console.warn(`[Fetch] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+          fetchLog.warn(`[Fetch] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
           
           // If we've reached max retries, throw the last error
           if (attempt >= maxRetries - 1) {
@@ -133,7 +135,7 @@ export const fetchWithTimeout = async (resource, options = {}) => {
           
           // Wait before retrying
           const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
-          console.log(`[Fetch] Retrying in ${delay}ms...`);
+          fetchLog.log(`[Fetch] Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           attempt++;
         }

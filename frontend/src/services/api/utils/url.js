@@ -1,3 +1,5 @@
+import logger from '../../../utils/logger';
+const urlLog = logger('api:utils:url');
 import { API_BASE_URL, FALLBACK_URLS } from '../config';
 
 // Track current URL being used
@@ -22,7 +24,7 @@ export const tryNextFallbackUrl = () => {
   currentUrlIndex = (currentUrlIndex + 1) % FALLBACK_URLS.length;
   currentBaseUrl = FALLBACK_URLS[currentUrlIndex];
   
-  console.warn(`[API] Trying fallback URL: ${currentBaseUrl}`);
+  urlLog.warn(`[API] Trying fallback URL: ${currentBaseUrl}`);
   return true;
 };
 
@@ -84,7 +86,7 @@ export const clearCacheAfterTTL = (key, ttl) => {
   setTimeout(() => {
     // Clear from any caches if needed
     if (window.caches) {
-      caches.delete(key).catch(console.error);
+      caches.delete(key).catch(e => urlLog.error('Failed to delete cache key during cleanup:', e));
     }
   }, ttl);
 };
@@ -100,7 +102,7 @@ export const cleanExpiredCache = () => {
     caches.keys().then(keys => {
       keys.forEach(key => {
         if (key.startsWith('cache-') && key.endsWith(`-${now}`)) {
-          caches.delete(key).catch(console.error);
+          caches.delete(key).catch(e => urlLog.error('Failed to delete expired cache key:', e));
         }
       });
     });

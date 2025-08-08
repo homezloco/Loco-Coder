@@ -1,4 +1,6 @@
 import { TOKEN_KEYS } from '../config';
+import logger from '../../../utils/logger';
+const tokenLog = logger('api:utils:token');
 
 // Track token state
 let authToken = null;
@@ -76,7 +78,7 @@ export const storeToken = (token, refreshTokenValue = null, expiresIn = null) =>
     try {
       localStorage.setItem(TOKEN_KEYS.refreshKey, refreshTokenValue);
     } catch (e) {
-      console.warn('Failed to store refresh token in localStorage:', e);
+      tokenLog.warn('Failed to store refresh token in localStorage:', e);
     }
   }
   
@@ -94,7 +96,7 @@ export const storeToken = (token, refreshTokenValue = null, expiresIn = null) =>
       }
     }
   } catch (e) {
-    console.warn('Failed to store token:', e);
+    tokenLog.warn('Failed to store token:', e);
   }
 };
 
@@ -105,7 +107,7 @@ export const clearAuthData = () => {
   // No-op guard to prevent repeated clears/log spam
   if (!isAuthDataPresent()) {
     if (DEV && typeof window !== 'undefined' && !window.__TOKEN_CLEAR_NOOP_LOGGED__) {
-      console.log('[Token] clearAuthData: nothing to clear (noop)');
+      tokenLog.log('[Token] clearAuthData: nothing to clear (noop)');
       window.__TOKEN_CLEAR_NOOP_LOGGED__ = true;
     }
     return;
@@ -129,7 +131,7 @@ export const clearAuthData = () => {
     document.cookie = `${TOKEN_KEYS.storageKey}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
     document.cookie = `${TOKEN_KEYS.refreshKey}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   } catch (e) {
-    console.warn('Failed to clear auth data:', e);
+    tokenLog.warn('Failed to clear auth data:', e);
   }
 };
 
@@ -204,13 +206,13 @@ export const initAuthToken = async () => {
           return authToken;
         }
       } catch (e) {
-        console.warn('Failed to refresh token:', e);
+        tokenLog.warn('Failed to refresh token:', e);
       }
     }
     
     return null;
   } catch (e) {
-    console.warn('Failed to initialize auth token:', e);
+    tokenLog.warn('Failed to initialize auth token:', e);
     return null;
   }
 };
